@@ -130,14 +130,14 @@ public class UnitRelationship implements ISimulationEnvironment {
             instancesFromConnections.add(instance.from.instance);
             instancesFromConnections.add(instance.to.instance);
             if (!instanceNameToInstanceComponentInfo.containsKey(instance.from.instance.instanceName)) {
-                instanceNameToInstanceComponentInfo
-                        .put(instance.from.instance.instanceName, new ComponentInfo(fmuKeyToModelDescription.get(instance.from.instance.key)/*modelDescriptionValidator.Verify(fmuKeyToModelDescription.get(instance.from
-                                .instance.key)*/, instance.from.instance.key));
+                instanceNameToInstanceComponentInfo.put(instance.from.instance.instanceName,
+                        new ComponentInfo(modelDescriptionValidator.Verify(fmuKeyToModelDescription.get(instance.from.instance.key)),
+                                instance.from.instance.key));
             }
             if (!instanceNameToInstanceComponentInfo.containsKey(instance.to.instance.instanceName)) {
-                instanceNameToInstanceComponentInfo.put(instance.to.instance.instanceName, new ComponentInfo(fmuKeyToModelDescription
-                        .get(instance.to.instance.key)/*modelDescriptionValidator.Verify(fmuKeyToModelDescription.get(instance.to.instance.key))*/,
-                        instance.to.instance.key));
+                instanceNameToInstanceComponentInfo.put(instance.to.instance.instanceName,
+                        new ComponentInfo(modelDescriptionValidator.Verify(fmuKeyToModelDescription.get(instance.to.instance.key)),
+                                instance.to.instance.key));
             }
         }
 
