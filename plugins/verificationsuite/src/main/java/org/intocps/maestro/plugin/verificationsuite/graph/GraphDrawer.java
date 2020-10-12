@@ -19,7 +19,7 @@ public class GraphDrawer {
         return o.scalarVariable.instance.getText() + "." + o.scalarVariable.scalarVariable.getName();
     }
 
-    public void plotGraph(Set<UnitRelationship.Relation> relations, String name) throws IOException {
+    public void plotGraph(Set<UnitRelationship.Relation> relations, String name, String filepath) throws IOException {
         MutableGraph g = mutGraph(name).setDirected(true);
         var connections =
                 relations.stream().filter(o -> o.getDirection() == UnitRelationship.Relation.Direction.OutputToInput).collect(Collectors.toList());
@@ -27,17 +27,17 @@ public class GraphDrawer {
             var targets = rel.getTargets().values().stream().map(o -> mutNode(getInstanceName(o)).add(Color.BLACK)).collect(Collectors.toList());
             var source = mutNode(getInstanceName(rel.getSource())).add(Color.BLACK);
 
-            if(rel.getOrigin() == UnitRelationship.Relation.InternalOrExternal.Internal){
+            if (rel.getOrigin() == UnitRelationship.Relation.InternalOrExternal.Internal) {
                 targets.forEach(t -> {
                     g.add(t.addLink(source));
                     g.nodes().stream().filter(o -> o == t).forEach(o -> o.links().forEach(r -> r.attrs().add(Style.DASHED)));
                 });
-            }else {
+            } else {
                 targets.forEach(t -> g.add(source.addLink(t)));
             }
         }
 
 
-        Graphviz.fromGraph(g).height(500).render(Format.PNG).toFile(new File(String.format("example/%s.png", name)));
+        Graphviz.fromGraph(g).height(500).render(Format.PNG).toFile(new File(filepath + ".png"));
     }
 }

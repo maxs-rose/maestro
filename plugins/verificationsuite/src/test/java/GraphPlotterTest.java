@@ -5,9 +5,12 @@ import org.intocps.maestro.plugin.env.fmi2.RelationVariable;
 import org.intocps.maestro.plugin.verificationsuite.graph.GraphDrawer;
 import org.intocps.maestro.plugin.verificationsuite.vdmcheck.VDMChecker;
 import org.intocps.orchestration.coe.modeldefinition.ModelDescription;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.io.InputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -16,6 +19,16 @@ import java.util.stream.Collectors;
 public class GraphPlotterTest {
     InputStream envWaterTankJson = this.getClass().getResourceAsStream("PrologVerifierTest/env.json");
     InputStream envThreeTankJson = this.getClass().getResourceAsStream("PrologVerifierTest/threetank_env.json");
+    String path;
+
+    @Before
+    public void setUp() {
+        path = GraphPlotterTest.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+        if (path != null && path.length() > 0 && path.charAt(path.length() - 1) == '/') {
+            path = path.substring(0, path.length() - 1);
+        }
+        path = path.substring(0, path.lastIndexOf("/"));
+    }
 
     @Test
     public void PlotGraphWatertankTest() throws Exception {
@@ -24,8 +37,8 @@ public class GraphPlotterTest {
         var components = Arrays.asList("crtlInstance", "wtInstance");
         var relations = new HashSet<UnitRelationship.Relation>();
         components.forEach(c -> relations.addAll(unitRelationship.getRelations(new LexIdentifier(c, null))));
-
-        graphDrawer.plotGraph(relations, "WaterTankGraph");
+        String filePath = Path.of(path, "WaterTankGraph").toString();
+        graphDrawer.plotGraph(relations, "WaterTankGraph", filePath);
     }
 
     //@Ignore
@@ -37,7 +50,8 @@ public class GraphPlotterTest {
         var relations = new HashSet<UnitRelationship.Relation>();
         components.forEach(c -> relations.addAll(unitRelationship.getRelations(new LexIdentifier(c, null))));
 
-        graphDrawer.plotGraph(relations, "ThreeTankGraph");
+        String filePath = Path.of(path, "ThreeTankGraph").toString();
+        graphDrawer.plotGraph(relations, "ThreeTankGraph", filePath);
     }
 
     @Test
@@ -65,7 +79,8 @@ public class GraphPlotterTest {
         relations.add(new UnitRelationship.Relation.RelationBuilder(variable3, target1).build());
         relations.add(new UnitRelationship.Relation.RelationBuilder(variable3, target4).build());
 
-        graphDrawer.plotGraph(relations, "LoopGraph");
+        String filePath = Path.of(path, "LoopGraph").toString();
+        graphDrawer.plotGraph(relations, "LoopGraph", filePath);
     }
 
 
