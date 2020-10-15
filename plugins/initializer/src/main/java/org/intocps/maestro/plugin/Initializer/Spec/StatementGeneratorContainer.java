@@ -82,8 +82,7 @@ public class StatementGeneratorContainer {
         for (Integer i : errorCodes) {
             orExpressions.add(newEqual(statusExpression.clone(), newAIntLiteralExp(i)));
         }
-        PExp orExpression = MableBuilder.nestedOr(orExpressions);
-        return orExpression;
+        return MableBuilder.nestedOr(orExpressions);
     }
 
     private static PStm createGetSVsStatement(String instanceName, String functionName, long[] longs, LexIdentifier valueArray,
@@ -168,19 +167,15 @@ public class StatementGeneratorContainer {
 
         LexIdentifier doesConverge = new LexIdentifier("doesConverge", null);
         statements.add(newALocalVariableStm(
-                newAVariableDeclaration(doesConverge, newABoleanPrimitiveType(), newAExpInitializer(newABoolLiteralExp(false)))));
+                newAVariableDeclaration(doesConverge, newABoleanPrimitiveType(), newAExpInitializer(newABoolLiteralExp(true)))));
         List<PStm> loopStmts = new Vector<>();
 
+        //doesConverge should be cleared/set to true in the beginning of each loop iteration:
+        loopStmts.add(newAAssignmentStm(newAIdentifierStateDesignator(doesConverge), newABoolLiteralExp(true)));
         loopStmts.addAll(performLoopActions(loopVariables, env));
 
         //Check for convergence
         loopStmts.addAll(checkLoopConvergence(outputs, doesConverge));
-
-        loopStmts.add(newIf(newAnd(newNot(newAIdentifierExp(doesConverge)), newEqual(newAIdentifierExp(start), newAIdentifierExp(end))), newABlockStm(
-                Arrays.asList(
-                        newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier("global_execution_continue")), newABoolLiteralExp(false)),
-                        newExpressionStm(newACallExp(newAIdentifierExp("logger"), newAIdentifier("log"), Arrays.asList(newAIntLiteralExp(4),
-                                newAStringLiteralExp("The initialization of the system was not possible since loop is not converging")))))), null));
 
         loopStmts.addAll(updateReferenceArray(outputs));
 
@@ -193,7 +188,7 @@ public class StatementGeneratorContainer {
 
         statements.add(newIf(newNot(newAIdentifierExp(doesConverge)),
                 newABlockStm(Arrays.asList(
-                        newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier("global_execution_continue")), newABoolLiteralExp(false)),
+                        newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier(IMaestroPlugin.GLOBAL_EXECUTION_CONTINUE)), newABoolLiteralExp(false)),
                         newExpressionStm(newACallExp(newAIdentifierExp("logger"), newAIdentifier("log"), Arrays.asList(newAIntLiteralExp(4),
                                 newAStringLiteralExp("The initialization of the system was not possible since loop is not converging")))))), null));
         return statements;
@@ -300,6 +295,7 @@ public class StatementGeneratorContainer {
 
         });
 
+        //Break if all loops have converges - meaning DoesConverge is true;
         result.add(newIf(newAIdentifierExp(doesConverge), newBreak(), null));
 
         return result;
