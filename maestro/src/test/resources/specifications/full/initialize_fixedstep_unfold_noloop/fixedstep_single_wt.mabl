@@ -27,6 +27,7 @@ expand fixedStep(components,STEP_SIZE,START_TIME,END_TIME);
 MassSpringDamper1.freeInstance(i1);
 MassSpringDamper2.freeInstance(i2);
 
+unload(logger);
 unload(MassSpringDamper1);
 unload(MassSpringDamper2);
 unload(dataWriter);

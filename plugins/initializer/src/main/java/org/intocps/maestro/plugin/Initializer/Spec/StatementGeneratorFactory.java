@@ -13,16 +13,15 @@ import org.intocps.orchestration.coe.config.ModelParameter;
 import org.intocps.orchestration.coe.modeldefinition.ModelDescription;
 
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 
 import static org.intocps.maestro.ast.MableAstFactory.*;
 
-public class StatementGeneratorContainer {
+public class StatementGeneratorFactory {
     private static final Function<String, LexIdentifier> createLexIdentifier = s -> new LexIdentifier(s.replace("-", ""), null);
-    private static StatementGeneratorContainer container = null;
+    private static StatementGeneratorFactory container = null;
     private final LexIdentifier statusVariable = createLexIdentifier.apply("status");
     private final Map<Integer, LexIdentifier> realArrays = new HashMap<>();
     private final Map<Integer, LexIdentifier> boolArrays = new HashMap<>();
@@ -64,19 +63,6 @@ public class StatementGeneratorContainer {
     public List<ModelParameter> modelParameters;
 
 
-    private StatementGeneratorContainer() {
-        AVariableDeclaration status =
-                newAVariableDeclaration(statusVariable, newAIntNumericPrimitiveType(), newAExpInitializer(newAIntLiteralExp(0)));
-        //statements.add(newALocalVariableStm(status));
-    }
-
-    public static StatementGeneratorContainer getInstance() {
-        if (container == null) {
-            container = new StatementGeneratorContainer();
-        }
-        return container;
-    }
-
     private static PStm createGetSVsStatement(String instanceName, String functionName, long[] longs, LexIdentifier valueArray,
             LexIdentifier valRefArray, LexIdentifier statusVariable) {
         return newAAssignmentStm(newAIdentifierStateDesignator(statusVariable),
@@ -84,10 +70,6 @@ public class StatementGeneratorContainer {
                         (LexIdentifier) createLexIdentifier.apply(functionName).clone(), new ArrayList<PExp>(
                                 Arrays.asList(newAIdentifierExp(valRefArray), newAUIntLiteralExp((long) longs.length),
                                         newAIdentifierExp(valueArray)))));
-    }
-
-    public static void reset() {
-        container = null;
     }
 
     public SPrimitiveTypeBase FMITypeToMablType(ModelDescription.Types type) {
@@ -131,6 +113,7 @@ public class StatementGeneratorContainer {
                 .add(newALocalVariableStm(newAVariableDeclaration(start, newARealNumericPrimitiveType(), newAExpInitializer(newAIntLiteralExp(0)))));
         statements.add(newALocalVariableStm(
                 newAVariableDeclaration(end, newAIntNumericPrimitiveType(), newAExpInitializer(newAIntLiteralExp(iterationMax)))));
+
         var outputs =
                 loopVariables.stream().filter(o -> o.scalarVariable.getScalarVariable().causality == ModelDescription.Causality.Output
                         && o.scalarVariable.scalarVariable.getType().type == ModelDescription.Types.Real)
@@ -145,9 +128,9 @@ public class StatementGeneratorContainer {
             convergenceRefArray.put(output, lexIdentifier);
         }
 
-        LexIdentifier doesConverge = new LexIdentifier("DoesConverge", null);
+        LexIdentifier doesConverge = new LexIdentifier("doesConverge", null);
         statements.add(newALocalVariableStm(
-                newAVariableDeclaration(doesConverge, newABoleanPrimitiveType(), newAExpInitializer(newABoolLiteralExp(true)))));
+                newAVariableDeclaration(doesConverge, newABoleanPrimitiveType(), newAExpInitializer(newABoolLiteralExp(false)))));
         List<PStm> loopStmts = new Vector<>();
 
         loopStmts.addAll(PerformLoopActions(loopVariables, env));
@@ -155,21 +138,21 @@ public class StatementGeneratorContainer {
         //Check for convergence
         loopStmts.addAll(CheckLoopConvergence(outputs, doesConverge));
 
-        loopStmts.add(newIf(newAnd(newNot(newAIdentifierExp(doesConverge)), newEqual(newAIdentifierExp(start), newAIdentifierExp(end))),
-                newABlockStm(Arrays.asList(
-                        newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier("global_execution_continue")), newABoolLiteralExp(false)),
-                        newExpressionStm(newACallExp(newAIdentifierExp("logger"), newAIdentifier("log"), Arrays.asList(newAIntLiteralExp(4),
-                                newAStringLiteralExp("The initialization of the system was not possible since loop is not converging")))))), null));
-
+        //Update values in each iteration of the loop
         loopStmts.addAll(UpdateReferenceArray(outputs));
 
-        //Perform next iteration
+        //Loop progression
         loopStmts.add(newAAssignmentStm(newAIdentifierStateDesignator((LexIdentifier) start.clone()),
                 newPlusExp(newAIdentifierExp((LexIdentifier) start.clone()), newAIntLiteralExp(1))));
 
         //solve problem by updating values
         statements.add(newWhile(newALessEqualBinaryExp(newAIdentifierExp(start), newAIdentifierExp(end)), newABlockStm(loopStmts)));
 
+        statements.add(newIf(newNot(newAIdentifierExp(doesConverge)),
+                newABlockStm(Arrays.asList(
+                        newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier("global_execution_continue")), newABoolLiteralExp(false)),
+                        newExpressionStm(newACallExp(newAIdentifierExp("logger"), newAIdentifier("log"), Arrays.asList(newAIntLiteralExp(4),
+                                newAStringLiteralExp("The initialization of the system was not possible since loop is not converging")))))), null));
         return statements;
     }
 
@@ -261,18 +244,18 @@ public class StatementGeneratorContainer {
             //find number of places in array
             var arraySize = newAIntLiteralExp(0);
 
-            convergenceLoop.add(newIf(
-                    newACallExp(newAIdentifierExp(createLexIdentifier.apply("Math")), (LexIdentifier) createLexIdentifier.apply("isClose").clone(),
+            convergenceLoop.add(newIf(newNot(
+                    newACallExp(newAIdentifierExp(createLexIdentifier.apply("math")), (LexIdentifier) createLexIdentifier.apply("isClose").clone(),
                             new ArrayList<>(Arrays.asList(
                                     newAArrayIndexExp(newAIdentifierExp(currentValue), Collections.singletonList(newAIdentifierExp(index))),
                                     newAArrayIndexExp(newAIdentifierExp(referenceValue), Collections.singletonList(newAIdentifierExp(index))),
-                                    newARealLiteralExp(this.absoluteTolerance), newARealLiteralExp(this.relativeTolerance)))), null,
-                    newAAssignmentStm(newAIdentifierStateDesignator((LexIdentifier) doesConverge.clone()), newABoolLiteralExp(false))));
+                                    newARealLiteralExp(this.absoluteTolerance), newARealLiteralExp(this.relativeTolerance))))),
+                    newAAssignmentStm(newAIdentifierStateDesignator((LexIdentifier) doesConverge.clone()), newABoolLiteralExp(false)), null));
 
             convergenceLoop.add(newAAssignmentStm(newAIdentifierStateDesignator((LexIdentifier) index.clone()),
                     newPlusExp(newAIdentifierExp((LexIdentifier) index.clone()), newAIntLiteralExp(1))));
 
-            result.add(newWhile(newAnd(newALessEqualBinaryExp(newAIdentifierExp(index), arraySize), newNot(newAIdentifierExp(doesConverge))),
+            result.add(newWhile(newALessEqualBinaryExp(newAIdentifierExp(index), arraySize),
                     newABlockStm(convergenceLoop)));
 
         });

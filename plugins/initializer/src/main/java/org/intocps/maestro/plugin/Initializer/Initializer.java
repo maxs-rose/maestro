@@ -11,7 +11,7 @@ import org.intocps.maestro.plugin.ExpandException;
 import org.intocps.maestro.plugin.IMaestroExpansionPlugin;
 import org.intocps.maestro.plugin.IPluginConfiguration;
 import org.intocps.maestro.plugin.Initializer.ConversionUtilities.LongUtils;
-import org.intocps.maestro.plugin.Initializer.Spec.StatementGeneratorContainer;
+import org.intocps.maestro.plugin.Initializer.Spec.StatementGeneratorFactory;
 import org.intocps.maestro.plugin.SimulationFramework;
 import org.intocps.maestro.plugin.env.ISimulationEnvironment;
 import org.intocps.maestro.plugin.env.UnitRelationship;
@@ -85,14 +85,12 @@ public class Initializer implements IMaestroExpansionPlugin {
 
         verifyArguments(formalArguments, env);
         final List<LexIdentifier> knownComponentNames = extractComponentNames(formalArguments);
-        StatementGeneratorContainer.reset();
-        var sc = StatementGeneratorContainer.getInstance();
+        var sc = new StatementGeneratorFactory();
 
         setSCParameters(formalArguments, (Config) config, sc);
         List<PStm> statements = new Vector<>();
         AVariableDeclaration status =
                 newAVariableDeclaration(new LexIdentifier("status", null), newAIntNumericPrimitiveType(), newAExpInitializer(newAIntLiteralExp(0)));
-        //statements.add(newALocalVariableStm(status));
         statements.add(newALocalVariableStm(status));
         //Setup experiment for all components
         logger.debug("Setup experiment for all components");
@@ -140,7 +138,7 @@ public class Initializer implements IMaestroExpansionPlugin {
         return statements;
     }
 
-    private void setSCParameters(List<PExp> formalArguments, Config config, StatementGeneratorContainer sc) {
+    private void setSCParameters(List<PExp> formalArguments, Config config, StatementGeneratorFactory sc) {
         sc.startTime = formalArguments.get(1).clone();
         sc.endTime = formalArguments.get(2).clone();
         this.config = config;
@@ -150,7 +148,7 @@ public class Initializer implements IMaestroExpansionPlugin {
         sc.modelParameters = this.modelParameters;
     }
 
-    private List<PStm> initializeInterconnectedPorts(ISimulationEnvironment env, StatementGeneratorContainer sc,
+    private List<PStm> initializeInterconnectedPorts(ISimulationEnvironment env, StatementGeneratorFactory sc,
             List<Set<Variable>> instantiationOrder) throws ExpandException {
         var sccNumber = 0;
         List<PStm> stms = new Vector<>();
@@ -179,7 +177,7 @@ public class Initializer implements IMaestroExpansionPlugin {
         return stms;
     }
 
-    private List<PStm> initializeUsingFixedPoint(List<Variable> variables, StatementGeneratorContainer sc, ISimulationEnvironment env,
+    private List<PStm> initializeUsingFixedPoint(List<Variable> variables, StatementGeneratorFactory sc, ISimulationEnvironment env,
             int sccNumber) throws ExpandException {
         var optimizedOrder = optimizeInstantiationOrder(variables);
 
@@ -244,7 +242,7 @@ public class Initializer implements IMaestroExpansionPlugin {
     }
 
     //Graph doesn't contain any loops and the ports gets passed in a topological sorted order
-    private List<PStm> initializePort(Set<Variable> ports, StatementGeneratorContainer sc, ISimulationEnvironment env) throws ExpandException {
+    private List<PStm> initializePort(Set<Variable> ports, StatementGeneratorFactory sc, ISimulationEnvironment env) throws ExpandException {
         var scalarVariables = getScalarVariables(ports);
         var type = scalarVariables.iterator().next().getType().type;
         var instance = ports.stream().findFirst().get().scalarVariable.getInstance();
@@ -262,7 +260,7 @@ public class Initializer implements IMaestroExpansionPlugin {
     }
 
 
-    private List<PStm> SetComponentsVariables(ISimulationEnvironment env, List<LexIdentifier> knownComponentNames, StatementGeneratorContainer sc,
+    private List<PStm> SetComponentsVariables(ISimulationEnvironment env, List<LexIdentifier> knownComponentNames, StatementGeneratorFactory sc,
             Predicate<ModelDescription.ScalarVariable> predicate) {
         List<PStm> stms = new Vector<>();
         knownComponentNames.forEach(comp -> {
