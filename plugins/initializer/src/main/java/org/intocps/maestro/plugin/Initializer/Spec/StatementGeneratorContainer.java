@@ -3,34 +3,40 @@ package org.intocps.maestro.plugin.Initializer.Spec;
 import org.apache.commons.lang3.tuple.Pair;
 import org.intocps.maestro.ast.*;
 import org.intocps.maestro.core.Framework;
+import org.intocps.maestro.framework.fmi2.ComponentInfo;
+import org.intocps.maestro.framework.fmi2.FmiSimulationEnvironment;
 import org.intocps.maestro.plugin.ExpandException;
+import org.intocps.maestro.plugin.IMaestroPlugin;
 import org.intocps.maestro.plugin.Initializer.ConversionUtilities.BooleanUtils;
-import org.intocps.maestro.plugin.env.ISimulationEnvironment;
-import org.intocps.maestro.plugin.env.UnitRelationship;
-import org.intocps.maestro.plugin.env.fmi2.ComponentInfo;
 import org.intocps.orchestration.coe.config.ModelConnection;
 import org.intocps.orchestration.coe.config.ModelParameter;
 import org.intocps.orchestration.coe.modeldefinition.ModelDescription;
 
 import java.util.*;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 
 import static org.intocps.maestro.ast.MableAstFactory.*;
+import static org.intocps.maestro.ast.MableBuilder.call;
 
-public class StatementGeneratorFactory {
+public class StatementGeneratorContainer {
+    public static final BiFunction<PExp, String, PStm> errorReporter = (status, message) -> {
+        return newExpressionStm(call("logger", "log", newAIntLiteralExp(4), newAStringLiteralExp(message + " %d"), status.clone()));
+    };
+    public final static Integer[] FMIWARNINGANDFATALERRORCODES = {3, 4};
     private static final Function<String, LexIdentifier> createLexIdentifier = s -> new LexIdentifier(s.replace("-", ""), null);
-    private static StatementGeneratorFactory container = null;
-    private final LexIdentifier statusVariable = createLexIdentifier.apply("status");
+    private static StatementGeneratorContainer container = null;
+    private final String statusVariable = "status";
     private final Map<Integer, LexIdentifier> realArrays = new HashMap<>();
     private final Map<Integer, LexIdentifier> boolArrays = new HashMap<>();
     private final Map<Integer, LexIdentifier> longArrays = new HashMap<>();
     private final Map<Integer, LexIdentifier> intArrays = new HashMap<>();
     private final Map<Integer, LexIdentifier> stringArrays = new HashMap<>();
 
-    private final Map<UnitRelationship.Variable, LexIdentifier> convergenceRefArray = new HashMap<UnitRelationship.Variable, LexIdentifier>();
-    private final Map<UnitRelationship.Variable, LexIdentifier> loopValueArray = new HashMap<UnitRelationship.Variable, LexIdentifier>();
+    private final Map<FmiSimulationEnvironment.Variable, LexIdentifier> convergenceRefArray = new HashMap<>();
+    private final Map<FmiSimulationEnvironment.Variable, LexIdentifier> loopValueArray = new HashMap<>();
 
     private final EnumMap<ModelDescription.Types, String> typesStringMap = new EnumMap<>(ModelDescription.Types.class) {
         {
@@ -54,14 +60,31 @@ public class StatementGeneratorFactory {
     public PExp endTime;
     public double absoluteTolerance;
     public double relativeTolerance;
-
+    public List<ModelParameter> modelParameters;
     /**
      * <code>instancesLookupDependencies</code> is set to true the co-simulatino enters the stage where
      * dependencies are to be looked up. It is detected by the first "get".
      */
     private boolean instancesLookupDependencies = false;
-    public List<ModelParameter> modelParameters;
 
+
+    private StatementGeneratorContainer() {}
+
+    public static StatementGeneratorContainer getInstance() {
+        if (container == null) {
+            container = new StatementGeneratorContainer();
+        }
+        return container;
+    }
+
+    private static PExp statusErrorExpressions(PExp statusExpression, Integer[] errorCodes) {
+        List<PExp> orExpressions = new ArrayList<>();
+        for (Integer i : errorCodes) {
+            orExpressions.add(newEqual(statusExpression.clone(), newAIntLiteralExp(i)));
+        }
+        PExp orExpression = MableBuilder.nestedOr(orExpressions);
+        return orExpression;
+    }
 
     private static PStm createGetSVsStatement(String instanceName, String functionName, long[] longs, LexIdentifier valueArray,
             LexIdentifier valRefArray, LexIdentifier statusVariable) {
@@ -70,6 +93,24 @@ public class StatementGeneratorFactory {
                         (LexIdentifier) createLexIdentifier.apply(functionName).clone(), new ArrayList<PExp>(
                                 Arrays.asList(newAIdentifierExp(valRefArray), newAUIntLiteralExp((long) longs.length),
                                         newAIdentifierExp(valueArray)))));
+    }
+
+    public static void reset() {
+        container = null;
+    }
+
+    public static PStm statusCheck(PExp status, Integer[] statusCodes, String message, boolean breakOut, boolean setGlobalExecution) {
+        List<PStm> thenStm = new ArrayList<>();
+        thenStm.add(errorReporter.apply(status, message));
+        if (setGlobalExecution) {
+            thenStm.add(newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier(IMaestroPlugin.GLOBAL_EXECUTION_CONTINUE)),
+                    newABoolLiteralExp(false)));
+        }
+        if (breakOut) {
+            thenStm.add(newBreak());
+        }
+
+        return newIf(statusErrorExpressions(status.clone(), statusCodes), newABlockStm(thenStm), null);
     }
 
     public SPrimitiveTypeBase FMITypeToMablType(ModelDescription.Types type) {
@@ -88,7 +129,7 @@ public class StatementGeneratorFactory {
     }
 
     public PStm createSetupExperimentStatement(String instanceName, boolean toleranceDefined, double tolerance, boolean stopTimeDefined) {
-        return newAAssignmentStm(newAIdentifierStateDesignator(statusVariable),
+        return newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier(statusVariable)),
                 newACallExp(newAIdentifierExp(createLexIdentifier.apply(instanceName)),
                         (LexIdentifier) createLexIdentifier.apply("setupExperiment").clone(), new ArrayList<>(
                                 Arrays.asList(newABoolLiteralExp(toleranceDefined), newARealLiteralExp(tolerance), this.startTime.clone(),
@@ -98,13 +139,13 @@ public class StatementGeneratorFactory {
     }
 
     public PStm exitInitializationMode(String instanceName) {
-        return newAAssignmentStm(newAIdentifierStateDesignator(statusVariable),
+        return newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier(statusVariable)),
                 newACallExp(newAIdentifierExp(createLexIdentifier.apply(instanceName)),
                         (LexIdentifier) createLexIdentifier.apply("exitInitializationMode").clone(), null));
     }
 
-    public List<PStm> createFixedPointIteration(List<UnitRelationship.Variable> loopVariables, int iterationMax, int sccNumber,
-            ISimulationEnvironment env) throws ExpandException {
+    public List<PStm> createFixedPointIteration(List<FmiSimulationEnvironment.Variable> loopVariables, int iterationMax, int sccNumber,
+            FmiSimulationEnvironment env) throws ExpandException {
         LexIdentifier end = newAIdentifier(String.format("end%d", sccNumber));
         LexIdentifier start = newAIdentifier(String.format("start%d", sccNumber));
         List<PStm> statements = new Vector<>();
@@ -113,13 +154,10 @@ public class StatementGeneratorFactory {
                 .add(newALocalVariableStm(newAVariableDeclaration(start, newARealNumericPrimitiveType(), newAExpInitializer(newAIntLiteralExp(0)))));
         statements.add(newALocalVariableStm(
                 newAVariableDeclaration(end, newAIntNumericPrimitiveType(), newAExpInitializer(newAIntLiteralExp(iterationMax)))));
+        var outputs = loopVariables.stream().filter(o -> o.scalarVariable.getScalarVariable().causality == ModelDescription.Causality.Output &&
+                o.scalarVariable.scalarVariable.getType().type == ModelDescription.Types.Real).collect(Collectors.toList());
 
-        var outputs =
-                loopVariables.stream().filter(o -> o.scalarVariable.getScalarVariable().causality == ModelDescription.Causality.Output
-                        && o.scalarVariable.scalarVariable.getType().type == ModelDescription.Types.Real)
-                .collect(Collectors.toList());
-
-        for (UnitRelationship.Variable output : outputs) {
+        for (FmiSimulationEnvironment.Variable output : outputs) {
             var lexIdentifier = createLexIdentifier
                     .apply("Ref" + output.scalarVariable.instance.getText() + output.scalarVariable.scalarVariable.getName() + "ValueRef" +
                             output.scalarVariable.scalarVariable.getValueReference());
@@ -133,13 +171,18 @@ public class StatementGeneratorFactory {
                 newAVariableDeclaration(doesConverge, newABoleanPrimitiveType(), newAExpInitializer(newABoolLiteralExp(false)))));
         List<PStm> loopStmts = new Vector<>();
 
-        loopStmts.addAll(PerformLoopActions(loopVariables, env));
+        loopStmts.addAll(performLoopActions(loopVariables, env));
 
         //Check for convergence
-        loopStmts.addAll(CheckLoopConvergence(outputs, doesConverge));
+        loopStmts.addAll(checkLoopConvergence(outputs, doesConverge));
 
-        //Update values in each iteration of the loop
-        loopStmts.addAll(UpdateReferenceArray(outputs));
+        loopStmts.add(newIf(newAnd(newNot(newAIdentifierExp(doesConverge)), newEqual(newAIdentifierExp(start), newAIdentifierExp(end))), newABlockStm(
+                Arrays.asList(
+                        newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier("global_execution_continue")), newABoolLiteralExp(false)),
+                        newExpressionStm(newACallExp(newAIdentifierExp("logger"), newAIdentifier("log"), Arrays.asList(newAIntLiteralExp(4),
+                                newAStringLiteralExp("The initialization of the system was not possible since loop is not converging")))))), null));
+
+        loopStmts.addAll(updateReferenceArray(outputs));
 
         //Loop progression
         loopStmts.add(newAAssignmentStm(newAIdentifierStateDesignator((LexIdentifier) start.clone()),
@@ -156,7 +199,7 @@ public class StatementGeneratorFactory {
         return statements;
     }
 
-    private List<PStm> PerformLoopActions(List<UnitRelationship.Variable> loopVariables, ISimulationEnvironment env) {
+    private List<PStm> performLoopActions(List<FmiSimulationEnvironment.Variable> loopVariables, FmiSimulationEnvironment env) {
         List<PStm> LoopStatements = new Vector<>();
         loopVariables.stream().forEach(variable -> {
             long[] scalarValueIndices = new long[]{variable.scalarVariable.scalarVariable.valueReference};
@@ -164,8 +207,8 @@ public class StatementGeneratorFactory {
             //All members of the same set has the same causality, type and comes from the same instance
             if (variable.scalarVariable.scalarVariable.causality == ModelDescription.Causality.Output) {
                 var lexId = createLexIdentifier.apply(variable.scalarVariable.instance + variable.scalarVariable.getScalarVariable().name);
-                LoopStatements.add(newALocalVariableStm(newAVariableDeclaration(lexId,
-                        newAArrayType(FMITypeToMablType(variable.scalarVariable.scalarVariable.getType().type), 1))));
+                LoopStatements.add(newALocalVariableStm(
+                        newAVariableDeclaration(lexId, newAArrayType(FMITypeToMablType(variable.scalarVariable.scalarVariable.getType().type), 1))));
                 loopValueArray.put(variable, lexId);
                 try {
                     LoopStatements.addAll(getValueStm(variable.scalarVariable.instance.getText(), lexId, scalarValueIndices,
@@ -187,31 +230,28 @@ public class StatementGeneratorFactory {
     }
 
     public List<PStm> setValueOnPortStm(LexIdentifier comp, ModelDescription.Types type, List<ModelDescription.ScalarVariable> variables,
-            long[] scalarValueIndices, ISimulationEnvironment env) throws ExpandException {
+            long[] scalarValueIndices, FmiSimulationEnvironment env) throws ExpandException {
         ComponentInfo componentInfo = env.getUnitInfo(comp, Framework.FMI2);
         ModelConnection.ModelInstance modelInstances = new ModelConnection.ModelInstance(componentInfo.fmuIdentifier, comp.getText());
 
         if (type == ModelDescription.Types.Boolean) {
             return setBooleansStm(comp.getText(), scalarValueIndices,
-                    Arrays.stream(GetValues(variables, modelInstances)).map(Boolean.class::cast)
-                            .collect(BooleanUtils.TO_BOOLEAN_ARRAY));
+                    Arrays.stream(getValues(variables, modelInstances)).map(Boolean.class::cast).collect(BooleanUtils.TO_BOOLEAN_ARRAY));
         } else if (type == ModelDescription.Types.Real) {
             return setRealsStm(comp.getText(), scalarValueIndices,
-                    Arrays.stream(GetValues(variables, modelInstances)).mapToDouble(o -> Double.parseDouble(o.toString()))
-                            .toArray());
+                    Arrays.stream(getValues(variables, modelInstances)).mapToDouble(o -> Double.parseDouble(o.toString())).toArray());
         } else if (type == ModelDescription.Types.Integer) {
             return setIntegersStm(comp.getText(), scalarValueIndices,
-                    Arrays.stream(GetValues(variables, modelInstances)).mapToInt(o -> Integer.parseInt(o.toString()))
-                            .toArray());
+                    Arrays.stream(getValues(variables, modelInstances)).mapToInt(o -> Integer.parseInt(o.toString())).toArray());
         } else if (type == ModelDescription.Types.String) {
             return setStringsStm(comp.getText(), scalarValueIndices,
-                    (String[]) Arrays.stream(GetValues(variables, modelInstances)).map(o -> o.toString()).toArray());
+                    Arrays.stream(getValues(variables, modelInstances)).map(o -> o.toString()).toArray(String[]::new));
         } else {
             throw new ExpandException("Unrecognised type: " + type.name());
         }
     }
 
-    private PStm createReferenceArray(UnitRelationship.Variable variable, LexIdentifier lexID) throws ExpandException {
+    private PStm createReferenceArray(FmiSimulationEnvironment.Variable variable, LexIdentifier lexID) throws ExpandException {
         List<PExp> args = new ArrayList<>();
         args.add(getDefaultArrayValue(variable.scalarVariable.scalarVariable.getType().type));
 
@@ -221,7 +261,7 @@ public class StatementGeneratorFactory {
                         initializer));
     }
 
-    private List<PStm> UpdateReferenceArray(List<UnitRelationship.Variable> outputPorts) {
+    private List<PStm> updateReferenceArray(List<FmiSimulationEnvironment.Variable> outputPorts) {
         List<PStm> updateStmts = new Vector<>();
         outputPorts.forEach(o -> {
             var referenceValue = convergenceRefArray.get(o);
@@ -233,7 +273,7 @@ public class StatementGeneratorFactory {
     }
 
     //This method should check if all output of the Fixed Point iteration have stabilized/converged
-    private List<PStm> CheckLoopConvergence(List<UnitRelationship.Variable> outputPorts, LexIdentifier doesConverge) {
+    private List<PStm> checkLoopConvergence(List<FmiSimulationEnvironment.Variable> outputPorts, LexIdentifier doesConverge) {
         LexIdentifier index = newAIdentifier("index");
         List<PStm> result = new Vector<>();
         result.add(newALocalVariableStm(newAVariableDeclaration(index, newAIntNumericPrimitiveType(), newAExpInitializer(newAIntLiteralExp(0)))));
@@ -266,13 +306,13 @@ public class StatementGeneratorFactory {
     }
 
     public PStm enterInitializationMode(String instanceName) {
-        return newAAssignmentStm(newAIdentifierStateDesignator(statusVariable),
+        return newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier(statusVariable)),
                 newACallExp(newAIdentifierExp(createLexIdentifier.apply(instanceName)),
                         (LexIdentifier) createLexIdentifier.apply("enterInitializationMode").clone(), null));
     }
 
     private PStm generateAssignmentStm(String instanceName, long[] longs, LexIdentifier valueArray, LexIdentifier valRefs, String setCommand) {
-        return MableAstFactory.newAAssignmentStm(MableAstFactory.newAIdentifierStateDesignator(statusVariable),
+        return MableAstFactory.newAAssignmentStm(MableAstFactory.newAIdentifierStateDesignator(newAIdentifier(statusVariable)),
                 newACallExp(MableAstFactory.newAIdentifierExp(createLexIdentifier.apply(instanceName)),
                         (LexIdentifier) createLexIdentifier.apply(setCommand).clone(), new ArrayList<PExp>(
                                 Arrays.asList(MableAstFactory.newAIdentifierExp(valRefs), MableAstFactory.newAUIntLiteralExp((long) longs.length),
@@ -301,7 +341,6 @@ public class StatementGeneratorFactory {
 
         return Pair.of(lexID, statements);
     }
-
 
     private List<PStm> assignValueToArray(int valueLength, IntFunction<Pair<PExp, List<PStm>>> valueLocator, LexIdentifier valueArray) {
         List<PStm> statements = new Vector<>();
@@ -464,7 +503,7 @@ public class StatementGeneratorFactory {
         var valRefs = findOrCreateValueReferenceArrayAndAssign(longs);
         statements.addAll(valRefs.getRight());
 
-        statements.add(generateAssignmentStm(instanceName, longs, valueArray, valRefs.getLeft(), "setReal"));
+        statements.addAll(generateAssignmentStmForSet(instanceName, longs, valueArray, valRefs.getLeft(), "setReal"));
         return statements;
     }
 
@@ -490,7 +529,7 @@ public class StatementGeneratorFactory {
         var valRefs = findOrCreateValueReferenceArrayAndAssign(longs);
         statements.addAll(valRefs.getRight());
 
-        statements.add(generateAssignmentStm(instanceName, longs, valueArray, valRefs.getLeft(), "setBoolean"));
+        statements.addAll(generateAssignmentStmForSet(instanceName, longs, valueArray, valRefs.getLeft(), "setBoolean"));
         return statements;
     }
 
@@ -514,7 +553,7 @@ public class StatementGeneratorFactory {
 
         var valRefs = findOrCreateValueReferenceArrayAndAssign(longs);
         statements.addAll(valRefs.getRight());
-        statements.add(generateAssignmentStm(instanceName, longs, valueArray, valRefs.getLeft(), "setInteger"));
+        statements.addAll(generateAssignmentStmForSet(instanceName, longs, valueArray, valRefs.getLeft(), "setInteger"));
         return statements;
     }
 
@@ -538,11 +577,51 @@ public class StatementGeneratorFactory {
 
         var valRefs = findOrCreateValueReferenceArrayAndAssign(longs);
         statements.addAll(valRefs.getRight());
-        statements.add(generateAssignmentStm(instanceName, longs, valueArray, valRefs.getLeft(), "setString"));
+
+        statements.addAll(generateAssignmentStmForSet(instanceName, longs, valueArray, valRefs.getLeft(), "setString"));
+
         return statements;
     }
 
-    public Object[] GetValues(List<ModelDescription.ScalarVariable> variables, ModelConnection.ModelInstance modelInstance) {
+    public List<PStm> generateAssignmentStmForSet(String instanceName, long[] longs, LexIdentifier valueArray, LexIdentifier valRefs,
+            String setCommand) {
+        List<PStm> pstms = new ArrayList<>();
+        pstms.add(generateAssignmentStm(instanceName, longs, valueArray, valRefs, setCommand));
+        pstms.add(statusCheck(newAIdentifierExp(newAIdentifier(statusVariable)), FMIWARNINGANDFATALERRORCODES, "set failed", true, true));
+        return pstms;
+
+    }
+
+    // Input:
+    // A variable that is compared to a test
+
+
+    //    public void test() {
+    //        BiConsumer<Map.Entry<Boolean, String>, Map.Entry<LexIdentifier, List<PStm>>> checkStatus = (inLoopAndMessage, list) -> {
+    //            List<PStm> body = new Vector<>(Arrays.asList(newExpressionStm(
+    //                    call("logger", "log", newAIntLiteralExp(4), newAStringLiteralExp(inLoopAndMessage.getValue() + " %d "),
+    //                            arrayGet(fixedStepStatus, newAIdentifierExp((LexIdentifier) compIndexVar.clone())))),
+    //                    newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier(IMaestroPlugin.GLOBAL_EXECUTION_CONTINUE)),
+    //                            newABoolLiteralExp(false))));
+    //
+    //            if (inLoopAndMessage.getKey()) {
+    //                body.add(newBreak());
+    //            }
+    //
+    //            list.getValue().add(newIf(newOr((newEqual(getCompStatusExp.apply(list.getKey()), newAIntLiteralExp(FMI_ERROR))),
+    //                    (newEqual(getCompStatusExp.apply(list.getKey()), newAIntLiteralExp(FMI_FATAL)))), newABlockStm(body), null));
+    //        };
+    //    }
+
+    public PStm generateIfConditionForSetGet() {
+        PExp orExp = statusErrorExpressions(newAIdentifierExp(newAIdentifier(statusVariable)), FMIWARNINGANDFATALERRORCODES);
+        return newIf(orExp, newABlockStm(
+                newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier(IMaestroPlugin.GLOBAL_EXECUTION_CONTINUE)), newABoolLiteralExp(false)),
+                newBreak()), null);
+
+    }
+
+    public Object[] getValues(List<ModelDescription.ScalarVariable> variables, ModelConnection.ModelInstance modelInstance) {
         Object[] values = new Object[variables.size()];
         var i = 0;
         for (ModelDescription.ScalarVariable v : variables) {
@@ -597,10 +676,23 @@ public class StatementGeneratorFactory {
 
         result.addAll(valRefs.getRight());
 
-        result.add(createGetSVsStatement(instanceName, "get" + type.name(), longs, valueArray, valRefs.getLeft(), statusVariable));
+        result.addAll(Arrays.asList(
+                createGetSVsStatement(instanceName, "get" + type.name(), longs, valueArray, valRefs.getLeft(), newAIdentifier(statusVariable)),
+                statusCheck(newAIdentifierExp(newAIdentifier(statusVariable)), FMIWARNINGANDFATALERRORCODES, "get failed", true, true)));
+
+
         // Update instanceVariables
-        result.addAll(updateInstanceVariables(instanceName, longs, valueArray, type));
+        result.addAll(updateInstanceVariables(instanceName, longs, (LexIdentifier) valueArray.clone(), type));
         return result;
+    }
+
+    //status expression
+    // besked
+
+    public Object test() {
+
+
+        return null;
     }
 
     private PExp getDefaultArrayValue(ModelDescription.Types type) throws ExpandException {

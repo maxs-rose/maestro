@@ -65,6 +65,11 @@ class Interpreter extends QuestionAnswerAdaptor<Context, Value> {
     }
 
     @Override
+    public Value caseAInstanceMappingStm(AInstanceMappingStm node, Context question) {
+        return new VoidValue();
+    }
+
+    @Override
     public Value caseALocalVariableStm(ALocalVariableStm node, Context question) throws AnalysisException {
 
         return node.getDeclaration().apply(this, question);
@@ -299,7 +304,7 @@ class Interpreter extends QuestionAnswerAdaptor<Context, Value> {
     public Value caseAWhileStm(AWhileStm node, Context question) throws AnalysisException {
 
         try {
-            while (((BooleanValue) node.getTest().apply(this, question)).getValue()) {
+            while (((BooleanValue) (node.getTest().apply(this, question).deref())).getValue()) {
                 node.getBody().apply(this, question);
             }
         } catch (BreakException e) {
@@ -346,10 +351,29 @@ class Interpreter extends QuestionAnswerAdaptor<Context, Value> {
 
     @Override
     public Value caseAEqualBinaryExp(AEqualBinaryExp node, Context question) throws AnalysisException {
-        NumericValue left = (NumericValue) node.getLeft().apply(this, question).deref();
-        NumericValue right = (NumericValue) node.getRight().apply(this, question).deref();
 
-        return new BooleanValue(left.deref().compareTo(right.deref()) == 0);
+        Value lv = node.getLeft().apply(this, question).deref();
+        Value rv = node.getRight().apply(this, question).deref();
+
+        if (lv.equals(rv)) {
+            new BooleanValue(true);
+        } else if (lv instanceof NumericValue && rv instanceof NumericValue) {
+            NumericValue left = (NumericValue) node.getLeft().apply(this, question).deref();
+            NumericValue right = (NumericValue) node.getRight().apply(this, question).deref();
+
+            return new BooleanValue(left.deref().compareTo(right.deref()) == 0);
+        } else if (lv instanceof BooleanValue && rv instanceof BooleanValue) {
+            BooleanValue left = (BooleanValue) node.getLeft().apply(this, question).deref();
+            BooleanValue right = (BooleanValue) node.getRight().apply(this, question).deref();
+
+            return new BooleanValue(left.getValue().compareTo(right.getValue()) == 0);
+        }
+
+        return new BooleanValue(false);
+
+        //        throw new InterpreterException(
+        //                "Equality not implement for: " + lv.getClass().getSimpleName() + " == " + rv.getClass().getSimpleName() + " (" + lv + " == " + rv +
+        //                        ")");
     }
 
     @Override
@@ -436,6 +460,11 @@ class Interpreter extends QuestionAnswerAdaptor<Context, Value> {
     }
 
     @Override
+    public Value caseANullExp(ANullExp node, Context question) throws AnalysisException {
+        return new NullValue();
+    }
+
+    @Override
     public Value createNewReturnValue(INode node, Context question) throws AnalysisException {
         logger.debug("Unhandled interpreter node: {}", node.getClass().getSimpleName());
         throw new InterpreterException("Unhandled node: " + node);
@@ -443,6 +472,17 @@ class Interpreter extends QuestionAnswerAdaptor<Context, Value> {
 
     @Override
     public Value createNewReturnValue(Object node, Context question) throws AnalysisException {
-        throw new InterpreterException("Unhandled node: " + node);
+        logger.debug("Unhandled interpreter object: {}", node.getClass().getSimpleName());
+        throw new InterpreterException("Unhandled object: " + node);
+    }
+
+    @Override
+    public Value caseAMinusUnaryExp(AMinusUnaryExp node, Context question) throws AnalysisException {
+        NumericValue exp = (NumericValue) node.getExp().apply(this, question).deref();
+        if (exp instanceof IntegerValue) {
+            return new IntegerValue(exp.intValue() * (-1));
+        } else {
+            return new RealValue(exp.realValue() * (-1));
+        }
     }
 }

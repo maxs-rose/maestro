@@ -7,16 +7,12 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.intocps.maestro.ast.*;
 import org.intocps.maestro.core.Framework;
 import org.intocps.maestro.core.messages.IErrorReporter;
-import org.intocps.maestro.plugin.ExpandException;
-import org.intocps.maestro.plugin.IMaestroExpansionPlugin;
-import org.intocps.maestro.plugin.IPluginConfiguration;
+import org.intocps.maestro.framework.core.ISimulationEnvironment;
+import org.intocps.maestro.framework.fmi2.ComponentInfo;
+import org.intocps.maestro.framework.fmi2.FmiSimulationEnvironment;
+import org.intocps.maestro.plugin.*;
 import org.intocps.maestro.plugin.Initializer.ConversionUtilities.LongUtils;
-import org.intocps.maestro.plugin.Initializer.Spec.StatementGeneratorFactory;
-import org.intocps.maestro.plugin.SimulationFramework;
-import org.intocps.maestro.plugin.env.ISimulationEnvironment;
-import org.intocps.maestro.plugin.env.UnitRelationship;
-import org.intocps.maestro.plugin.env.UnitRelationship.Variable;
-import org.intocps.maestro.plugin.env.fmi2.ComponentInfo;
+import org.intocps.maestro.plugin.Initializer.Spec.StatementGeneratorContainer;
 import org.intocps.maestro.plugin.verificationsuite.PrologVerifier.InitializationPrologQuery;
 import org.intocps.orchestration.coe.config.InvalidVariableStringException;
 import org.intocps.orchestration.coe.config.ModelConnection;
@@ -35,6 +31,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.intocps.maestro.ast.MableAstFactory.*;
+import static org.intocps.maestro.framework.fmi2.FmiSimulationEnvironment.Variable;
 
 @SimulationFramework(framework = Framework.FMI2)
 public class Initializer implements IMaestroExpansionPlugin {
@@ -80,34 +77,39 @@ public class Initializer implements IMaestroExpansionPlugin {
 
     @Override
     public List<PStm> expand(AFunctionDeclaration declaredFunction, List<PExp> formalArguments, IPluginConfiguration config,
-            ISimulationEnvironment env, IErrorReporter errorReporter) throws ExpandException {
+            ISimulationEnvironment envIn, IErrorReporter errorReporter) throws ExpandException {
         logger.debug("Unfolding: {}", declaredFunction.toString());
+
+        FmiSimulationEnvironment env = (FmiSimulationEnvironment) envIn;
 
         verifyArguments(formalArguments, env);
         final List<LexIdentifier> knownComponentNames = extractComponentNames(formalArguments);
-        var sc = new StatementGeneratorFactory();
+        StatementGeneratorContainer.reset();
+        var sc = StatementGeneratorContainer.getInstance();
 
         setSCParameters(formalArguments, (Config) config, sc);
         List<PStm> statements = new Vector<>();
         AVariableDeclaration status =
                 newAVariableDeclaration(new LexIdentifier("status", null), newAIntNumericPrimitiveType(), newAExpInitializer(newAIntLiteralExp(0)));
         statements.add(newALocalVariableStm(status));
+
         //Setup experiment for all components
         logger.debug("Setup experiment for all components");
         knownComponentNames.forEach(comp -> {
-            statements.add(sc.createSetupExperimentStatement(comp.getText(), false, 0.0, true));
+            statements.addAll(Arrays.asList(sc.createSetupExperimentStatement(comp.getText(), false, 0.0, true), StatementGeneratorContainer
+                    .statusCheck(newAIdentifierExp("status"), StatementGeneratorContainer.FMIWARNINGANDFATALERRORCODES, "Setup Experiment Failed: ",
+                            true, true)));
         });
 
         //All connections - Only relations in the fashion InputToOutput is necessary since the OutputToInputs are just a dublicated of this
-        Set<UnitRelationship.Relation> relations =
-                env.getRelations(knownComponentNames).stream().filter(o -> o.getDirection() == UnitRelationship.Relation.Direction.OutputToInput)
-                        .collect(Collectors.toSet());
+        Set<FmiSimulationEnvironment.Relation> relations = env.getRelations(knownComponentNames).stream()
+                .filter(o -> o.getDirection() == FmiSimulationEnvironment.Relation.Direction.OutputToInput).collect(Collectors.toSet());
 
         //Find the right order to instantiate dependentPorts and make sure where doesn't exist any cycles in the connections
-        List<Set<UnitRelationship.Variable>> instantiationOrder = topologicalPlugin.FindInstantiationOrderStrongComponents(relations);
+        List<Set<FmiSimulationEnvironment.Variable>> instantiationOrder = topologicalPlugin.findInstantiationOrderStrongComponents(relations);
 
         //Set variables for all components in IniPhase
-        statements.addAll(SetComponentsVariables(env, knownComponentNames, sc, PhasePredicates.IniPhase()));
+        statements.addAll(setComponentsVariables(env, knownComponentNames, sc, PhasePredicates.iniPhase()));
 
         if (this.config.verifyAgainstProlog && !initializationPrologQuery
                 .initializationOrderIsValid(instantiationOrder.stream().flatMap(Collection::stream).collect(Collectors.toList()), relations)) {
@@ -121,7 +123,7 @@ public class Initializer implements IMaestroExpansionPlugin {
         });
 
         var inputToOutputRelations =
-                env.getRelations(knownComponentNames).stream().filter(RelationsPredicates.InputToOutput()).collect(Collectors.toList());
+                env.getRelations(knownComponentNames).stream().filter(RelationsPredicates.inputToOutput()).collect(Collectors.toList());
 
         var inputOutMapping = createInputOutputMapping(inputToOutputRelations, env);
         sc.setInputOutputMapping(inputOutMapping);
@@ -134,11 +136,12 @@ public class Initializer implements IMaestroExpansionPlugin {
         knownComponentNames.forEach(comp -> {
             statements.add(sc.exitInitializationMode(comp.getText()));
         });
+        statements.add(newBreak());
 
-        return statements;
+        return Arrays.asList(newWhile(newAIdentifierExp(IMaestroPlugin.GLOBAL_EXECUTION_CONTINUE), newABlockStm(statements)));
     }
 
-    private void setSCParameters(List<PExp> formalArguments, Config config, StatementGeneratorFactory sc) {
+    private void setSCParameters(List<PExp> formalArguments, Config config, StatementGeneratorContainer sc) {
         sc.startTime = formalArguments.get(1).clone();
         sc.endTime = formalArguments.get(2).clone();
         this.config = config;
@@ -148,7 +151,7 @@ public class Initializer implements IMaestroExpansionPlugin {
         sc.modelParameters = this.modelParameters;
     }
 
-    private List<PStm> initializeInterconnectedPorts(ISimulationEnvironment env, StatementGeneratorFactory sc,
+    private List<PStm> initializeInterconnectedPorts(ISimulationEnvironment env, StatementGeneratorContainer sc,
             List<Set<Variable>> instantiationOrder) throws ExpandException {
         var sccNumber = 0;
         List<PStm> stms = new Vector<>();
@@ -162,6 +165,8 @@ public class Initializer implements IMaestroExpansionPlugin {
                 if (this.config.Stabilisation) {
                     //Algebraic loop - specially initialization strategy should be taken.
                     stms.addAll(initializeUsingFixedPoint(new ArrayList<>(variables), sc, env, sccNumber++));
+                    // In this case we need to check global_execution_continue and otherwise break.
+                    stms.add(newIf(newAIdentifierExp(IMaestroPlugin.GLOBAL_EXECUTION_CONTINUE), newBreak(), null));
                 } else if (variables.size() == 1) {
                     try {
                         stms.addAll(initializePort(variables, sc, env));
@@ -177,7 +182,7 @@ public class Initializer implements IMaestroExpansionPlugin {
         return stms;
     }
 
-    private List<PStm> initializeUsingFixedPoint(List<Variable> variables, StatementGeneratorFactory sc, ISimulationEnvironment env,
+    private List<PStm> initializeUsingFixedPoint(List<Variable> variables, StatementGeneratorContainer sc, FmiSimulationEnvironment env,
             int sccNumber) throws ExpandException {
         var optimizedOrder = optimizeInstantiationOrder(variables);
 
@@ -216,7 +221,7 @@ public class Initializer implements IMaestroExpansionPlugin {
     }
 
     private Map<ModelConnection.ModelInstance, Map<ModelDescription.ScalarVariable, AbstractMap.SimpleEntry<ModelConnection.ModelInstance, ModelDescription.ScalarVariable>>> createInputOutputMapping(
-            List<UnitRelationship.Relation> relations, ISimulationEnvironment env) {
+            List<FmiSimulationEnvironment.Relation> relations, ISimulationEnvironment env) {
         Map<ModelConnection.ModelInstance, Map<ModelDescription.ScalarVariable, AbstractMap.SimpleEntry<ModelConnection.ModelInstance, ModelDescription.ScalarVariable>>>
                 inputToOutputMapping = new HashMap<>();
 
@@ -242,7 +247,7 @@ public class Initializer implements IMaestroExpansionPlugin {
     }
 
     //Graph doesn't contain any loops and the ports gets passed in a topological sorted order
-    private List<PStm> initializePort(Set<Variable> ports, StatementGeneratorFactory sc, ISimulationEnvironment env) throws ExpandException {
+    private List<PStm> initializePort(Set<Variable> ports, StatementGeneratorContainer sc, FmiSimulationEnvironment env) throws ExpandException {
         var scalarVariables = getScalarVariables(ports);
         var type = scalarVariables.iterator().next().getType().type;
         var instance = ports.stream().findFirst().get().scalarVariable.getInstance();
@@ -260,7 +265,7 @@ public class Initializer implements IMaestroExpansionPlugin {
     }
 
 
-    private List<PStm> SetComponentsVariables(ISimulationEnvironment env, List<LexIdentifier> knownComponentNames, StatementGeneratorFactory sc,
+    private List<PStm> setComponentsVariables(FmiSimulationEnvironment env, List<LexIdentifier> knownComponentNames, StatementGeneratorContainer sc,
             Predicate<ModelDescription.ScalarVariable> predicate) {
         List<PStm> stms = new Vector<>();
         knownComponentNames.forEach(comp -> {
@@ -358,9 +363,9 @@ public class Initializer implements IMaestroExpansionPlugin {
 
     public static class Config implements IPluginConfiguration {
 
+        public final boolean Stabilisation;
         private final List<ModelParameter> modelParameters;
         private final boolean verifyAgainstProlog;
-        public final boolean Stabilisation;
         private final int maxIterations;
         private final double absoluteTolerance;
         private final double relativeTolerance;

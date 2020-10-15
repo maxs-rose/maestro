@@ -72,6 +72,7 @@ exp
     | {call} [object]:exp [expand]:parserToken [methodName]:lex_identifier [args]:exp*
     | {arrayIndex} [array]:exp [indices]:exp*
     | {par} [exp]:exp
+    | {null} [token]:parserToken
     ;
 
 #literal
@@ -119,7 +120,8 @@ stm
     | {while} [test]:exp [body]:stm
     | {expression} [exp]:exp
     | {observable} [identifier]:identifier
-    | {break}
+    | {break} [token]:parserToken
+    | {instanceMapping} [identifier]:lex_identifier [name]:java_String
     ;
 
 type

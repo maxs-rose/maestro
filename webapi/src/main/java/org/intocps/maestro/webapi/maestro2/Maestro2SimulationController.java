@@ -11,7 +11,7 @@ import io.swagger.annotations.ApiParam;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.NotImplementedException;
 import org.intocps.maestro.ast.ARootDocument;
-import org.intocps.maestro.plugin.env.ISimulationEnvironment;
+import org.intocps.maestro.framework.core.ISimulationEnvironment;
 import org.intocps.maestro.webapi.controllers.ProdSessionLogicFactory;
 import org.intocps.maestro.webapi.controllers.SessionController;
 import org.intocps.maestro.webapi.controllers.SessionLogic;
@@ -191,12 +191,6 @@ public class Maestro2SimulationController {
                 }
                 throw new NotImplementedException("Stabilisation is not implemented");
             }
-            if (body.loggingOn) {
-                throw new NotImplementedException("LoggingOn is not implemented");
-            }
-            if (body.visible) {
-                throw new NotImplementedException("Visible is not implemented");
-            }
             if (body.parallelSimulation) {
                 throw new NotImplementedException("ParallelSimulation is not implemented");
             }
@@ -310,7 +304,6 @@ public class Maestro2SimulationController {
 
     @ApiModel(subTypes = {FixedStepAlgorithmConfig.class, VariableStepAlgorithmConfig.class}, discriminator = "type",
             description = "Simulation algorithm.")
-
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
     @JsonSubTypes(
             {@Type(value = FixedStepAlgorithmConfig.class, name = "fixed-step"), @Type(value = VariableStepAlgorithmConfig.class, name = "var-step")})

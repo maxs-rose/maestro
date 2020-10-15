@@ -91,14 +91,13 @@ public class FmiInterpreter {
     }
 
 
-    public ModuleValue createFmiValue(String path, String guid) throws InterpreterException {
+    public Value createFmiValue(String path, String guid) throws InterpreterException {
 
         try {
             long startExecTime = System.nanoTime();
             final IFmu fmu = Factory.create(new File(path));
 
             fmu.load();
-
 
             Map<String, Value> functions = new HashMap<>();
 
@@ -124,6 +123,11 @@ public class FmiInterpreter {
 
                         }
                     });
+
+                    if (component == null) {
+                        logger.debug("Component instantiate failed");
+                        return new NullValue();
+                    }
 
                     //populate component functions
                     Map<String, Value> componentMembers = new HashMap<>();
@@ -501,6 +505,61 @@ public class FmiInterpreter {
 
                     }));
 
+                    componentMembers.put("getRealOutputDerivatives", new FunctionValue.ExternalFunctionValue(fcargs -> {
+                        //   int getRealOutputDerivatives(long[] scalarValueIndices, UInt nvr, int[] order, ref double[] derivatives);
+                        checkArgLength(fcargs, 4);
+
+                        if (!(fcargs.get(3) instanceof UpdatableValue)) {
+                            throw new InterpreterException("value not a reference value");
+                        }
+
+                        long[] scalarValueIndices =
+                                getArrayValue(fcargs.get(0), NumericValue.class).stream().mapToLong(NumericValue::longValue).toArray();
+
+                        int[] orders = getArrayValue(fcargs.get(2), NumericValue.class).stream().mapToInt(NumericValue::intValue).toArray();
+
+
+                        try {
+                            FmuResult<double[]> res = component.getRealOutputDerivatives(scalarValueIndices, orders);
+
+                            if (res.status == Fmi2Status.OK) {
+                                UpdatableValue ref = (UpdatableValue) fcargs.get(3);
+
+                                List<RealValue> values =
+                                        Arrays.stream(ArrayUtils.toObject(res.result)).map(d -> new RealValue(d)).collect(Collectors.toList());
+
+                                ref.setValue(new ArrayValue<>(values));
+                            }
+
+
+                            return new IntegerValue(res.status.value);
+
+                        } catch (FmuInvocationException e) {
+                            throw new InterpreterException(e);
+                        }
+
+
+                    }));
+
+                    componentMembers.put("setRealInputDerivatives", new FunctionValue.ExternalFunctionValue(fcargs -> {
+                        // int setRealInputDerivatives(UInt[] scalarValueIndices, UInt nvr, int[] order, ref real[] derivatives);
+                        checkArgLength(fcargs, 4);
+                        long[] scalarValueIndices =
+                                getArrayValue(fcargs.get(0), NumericValue.class).stream().mapToLong(NumericValue::longValue).toArray();
+
+                        int[] orders = getArrayValue(fcargs.get(2), NumericValue.class).stream().mapToInt(NumericValue::intValue).toArray();
+
+                        double[] values = getArrayValue(fcargs.get(3), RealValue.class).stream().mapToDouble(RealValue::getValue).toArray();
+
+                        try {
+                            Fmi2Status res = component.setRealInputDerivatives(scalarValueIndices, orders, values);
+                            return new IntegerValue(res.value);
+                        } catch (FmuInvocationException e) {
+                            throw new InterpreterException(e);
+                        }
+
+                    }));
+
                     long stopInstantiateTime = System.nanoTime();
                     System.out.println("Interpretation instantiate took: " + (stopInstantiateTime - startInstantiateTime));
                     return new FmuComponentValue(componentMembers, component);
@@ -565,7 +624,7 @@ public class FmiInterpreter {
         } catch (IOException | FmuInvocationException | FmuMissingLibraryException e) {
 
             e.printStackTrace();
-            throw new InterpreterException(e);
+            return new NullValue();
         }
     }
 }

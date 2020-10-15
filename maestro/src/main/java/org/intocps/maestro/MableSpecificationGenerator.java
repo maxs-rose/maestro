@@ -3,18 +3,17 @@ package org.intocps.maestro;
 import org.antlr.v4.runtime.*;
 import org.intocps.maestro.ast.*;
 import org.intocps.maestro.ast.analysis.AnalysisException;
+import org.intocps.maestro.ast.display.PrettyPrinter;
 import org.intocps.maestro.core.Framework;
 import org.intocps.maestro.core.InternalException;
 import org.intocps.maestro.core.messages.IErrorReporter;
+import org.intocps.maestro.framework.core.ISimulationEnvironment;
+import org.intocps.maestro.framework.fmi2.FmiSimulationEnvironment;
 import org.intocps.maestro.parser.MablLexer;
 import org.intocps.maestro.parser.MablParser;
 import org.intocps.maestro.parser.ParseTree2AstConverter;
 import org.intocps.maestro.plugin.*;
-import org.intocps.maestro.plugin.env.ISimulationEnvironment;
-import org.intocps.maestro.typechecker.PluginEnvironment;
-import org.intocps.maestro.typechecker.RootEnvironment;
-import org.intocps.maestro.typechecker.TypeComparator;
-import org.intocps.maestro.typechecker.TypeResolver;
+import org.intocps.maestro.typechecker.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -313,6 +312,9 @@ public class MableSpecificationGenerator {
             logger.info("\tImports {}", ("[ " + String.join(" , ", importedModuleNames) + " ]"));
 
 
+            // Add instance mapping statements to the unitrelationship
+            handleInstanceMappingStatements(simulationModule);
+
             //load plugins
             PluginEnvironment pluginEnvironment = loadExpansionPlugins(typeResolver, rootEnv, contextFile, framework, importedModuleNames);
 
@@ -333,14 +335,30 @@ public class MableSpecificationGenerator {
                         new ARootDocument(Stream.concat(importedModules.stream(), Stream.of(unfoldedSimulationModule)).collect(Collectors.toList()));
 
 
-                if (typeCheck(processedDoc, reporter)) {
-                    if (verify(processedDoc, reporter)) {
-                        return processedDoc;
+                String printedSpec = null;
+                try {
+                    printedSpec = PrettyPrinter.printLineNumbers(processedDoc);
+                } catch (AnalysisException e) {
+                    printedSpec = processedDoc + "";
+                }
+
+
+                ARootDocument specToCheck = null;
+                try {
+                    specToCheck = parse(CharStreams.fromString(PrettyPrinter.print(processedDoc)));
+                } catch (AnalysisException e) {
+                    specToCheck = processedDoc;
+                }
+
+
+                if (typeCheck(specToCheck, reporter)) {
+                    if (verify(specToCheck, reporter)) {
+                        return specToCheck;
                     }
                 }
 
 
-                throw new RuntimeException("No valid spec produced");
+                throw new RuntimeException("No valid spec prod.\n" + printedSpec);
 
             } finally {
                 if (verbose) {
@@ -357,6 +375,21 @@ public class MableSpecificationGenerator {
 
         } else {
             throw new InternalException("No Specification module found");
+        }
+    }
+
+    /**
+     * This adds instance mapping statements (@map a-> "a") to the unitrelationship.
+     *
+     * @param simulationModule
+     */
+    private void handleInstanceMappingStatements(ASimulationSpecificationCompilationUnit simulationModule) {
+        if (simulationModule.getBody() instanceof ABlockStm) {
+            Optional<List<AInstanceMappingStm>> instanceMappings = NodeCollector.collect(simulationModule.getBody(), AInstanceMappingStm.class);
+            if (instanceMappings.isPresent()) {
+                instanceMappings.get().forEach(x -> ((FmiSimulationEnvironment) this.simulationEnvironment)
+                        .setLexNameToInstanceNameMapping(x.getIdentifier().getText(), x.getName()));
+            }
         }
     }
 
@@ -406,6 +439,11 @@ public class MableSpecificationGenerator {
     private boolean typeCheck(final ARootDocument doc, final IErrorReporter reporter) {
         //TODO: implement type check
         logger.warn("Type checker not yet implemented");
-        return true;
+        try {
+            doc.apply(new TypeChecker(reporter));
+        } catch (AnalysisException e) {
+            e.printStackTrace();
+        }
+        return reporter.getErrorCount() == 0;
     }
 }

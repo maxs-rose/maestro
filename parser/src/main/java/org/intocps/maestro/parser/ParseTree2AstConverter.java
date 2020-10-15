@@ -103,7 +103,8 @@ public class ParseTree2AstConverter extends MablParserBaseVisitor<INode> {
 
     @Override
     public INode visitBreak(MablParser.BreakContext ctx) {
-        return new ABreakStm();
+
+        return new ABreakStm(convertToLexToken(ctx.BREAK().getSymbol()));
     }
 
     @Override
@@ -116,6 +117,7 @@ public class ParseTree2AstConverter extends MablParserBaseVisitor<INode> {
 
         return assign;
     }
+
 
     @Override
     public INode visitArrayStateDesignator(MablParser.ArrayStateDesignatorContext ctx) {
@@ -389,8 +391,18 @@ public class ParseTree2AstConverter extends MablParserBaseVisitor<INode> {
             //remove quotes
             literal.setValue((ctx.STRING_LITERAL().getText().substring(1, ctx.STRING_LITERAL().getText().length() - 1)));
             return literal;
+        } else if (ctx.NULL_LITERAL() != null) {
+            ANullExp literal = new ANullExp();
+            //remove quotes
+            literal.setToken(convertToLexToken(ctx.NULL_LITERAL().getSymbol()));
+            return literal;
         }
         throw new RuntimeException("unsupported literal");
+    }
+
+    @Override
+    public INode visitExpandMapping(MablParser.ExpandMappingContext ctx) {
+        return new AInstanceMappingStm(convert(ctx.identifier), ctx.name.getText().substring(1, ctx.name.getText().length() - 1));
     }
 
     @Override
@@ -425,11 +437,11 @@ public class ParseTree2AstConverter extends MablParserBaseVisitor<INode> {
     }
 
     private LexIdentifier convert(Token identifier) {
-        return new LexIdentifier(identifier.getText(), identifier);
+        return new LexIdentifier(identifier.getText(), convertToLexToken(identifier));
     }
 
     private LexIdentifier convert(TerminalNode identifier) {
-        return new LexIdentifier(identifier.getText(), identifier.getSymbol());
+        return new LexIdentifier(identifier.getText(), convertToLexToken(identifier.getSymbol()));
     }
 
 
