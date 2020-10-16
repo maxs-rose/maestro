@@ -75,6 +75,7 @@ public class Initializer implements IMaestroExpansionPlugin {
         return Stream.of(f1).collect(Collectors.toSet());
     }
 
+
     @Override
     public List<PStm> expand(AFunctionDeclaration declaredFunction, List<PExp> formalArguments, IPluginConfiguration config,
             ISimulationEnvironment envIn, IErrorReporter errorReporter) throws ExpandException {
@@ -96,8 +97,8 @@ public class Initializer implements IMaestroExpansionPlugin {
         //Setup experiment for all components
         logger.debug("Setup experiment for all components");
         knownComponentNames.forEach(comp -> {
-            statements.addAll(Arrays.asList(sc.createSetupExperimentStatement(comp.getText(), false, 0.0, true), StatementGeneratorContainer
-                    .statusCheck(newAIdentifierExp("status"), StatementGeneratorContainer.FMIWARNINGANDFATALERRORCODES, "Setup Experiment Failed: ",
+            statements.addAll(Arrays.asList(sc.createSetupExperimentStatement(comp.getText(), false, 0.0, true),
+                    StatementGeneratorContainer.statusCheck(newAIdentifierExp("status"), StatementGeneratorContainer.FMIWARNINGANDFATALERRORCODES, "Setup Experiment Failed: ",
                             true, true)));
         });
 
@@ -151,7 +152,7 @@ public class Initializer implements IMaestroExpansionPlugin {
         sc.modelParameters = this.modelParameters;
     }
 
-    private List<PStm> initializeInterconnectedPorts(ISimulationEnvironment env, StatementGeneratorContainer sc,
+    private List<PStm> initializeInterconnectedPorts(FmiSimulationEnvironment env, StatementGeneratorContainer sc,
             List<Set<Variable>> instantiationOrder) throws ExpandException {
         var sccNumber = 0;
         List<PStm> stms = new Vector<>();
@@ -221,7 +222,7 @@ public class Initializer implements IMaestroExpansionPlugin {
     }
 
     private Map<ModelConnection.ModelInstance, Map<ModelDescription.ScalarVariable, AbstractMap.SimpleEntry<ModelConnection.ModelInstance, ModelDescription.ScalarVariable>>> createInputOutputMapping(
-            List<FmiSimulationEnvironment.Relation> relations, ISimulationEnvironment env) {
+            List<FmiSimulationEnvironment.Relation> relations, FmiSimulationEnvironment env) {
         Map<ModelConnection.ModelInstance, Map<ModelDescription.ScalarVariable, AbstractMap.SimpleEntry<ModelConnection.ModelInstance, ModelDescription.ScalarVariable>>>
                 inputToOutputMapping = new HashMap<>();
 
@@ -322,7 +323,7 @@ public class Initializer implements IMaestroExpansionPlugin {
         return knownComponentNames;
     }
 
-    private void verifyArguments(List<PExp> formalArguments, ISimulationEnvironment env) throws ExpandException {
+    private void verifyArguments(List<PExp> formalArguments, FmiSimulationEnvironment env) throws ExpandException {
         //maybe some of these tests are not necessary - but they are in my unit test
         if (formalArguments == null || formalArguments.size() != f1.getFormals().size()) {
             throw new ExpandException("Invalid args");

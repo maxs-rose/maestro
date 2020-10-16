@@ -190,7 +190,8 @@ public class StatementGeneratorContainer {
                 newABlockStm(Arrays.asList(
                         newAAssignmentStm(newAIdentifierStateDesignator(newAIdentifier(IMaestroPlugin.GLOBAL_EXECUTION_CONTINUE)), newABoolLiteralExp(false)),
                         newExpressionStm(newACallExp(newAIdentifierExp("logger"), newAIdentifier("log"), Arrays.asList(newAIntLiteralExp(4),
-                                newAStringLiteralExp("The initialization of the system was not possible since loop is not converging")))))), null));
+                                newAStringLiteralExp("The initialization of the system was not possible since loop is not converging")))),
+                                newBreak())), null));
         return statements;
     }
 
@@ -261,15 +262,19 @@ public class StatementGeneratorContainer {
         outputPorts.forEach(o -> {
             var referenceValue = convergenceRefArray.get(o);
             var currentValue = loopValueArray.get(o);
-            //TODO
-            //updateStmts.add(newAAssignmentStm((referenceValue), newAIdentifierExp(currentValue));
+
+            AArrayStateDesignator value =
+                    newAArayStateDesignator(newAIdentifierStateDesignator(referenceValue), newAIntLiteralExp(0));
+            AArrayIndexExp assignmentExpression =
+                    newAArrayIndexExp(newAIdentifierExp(currentValue), Collections.singletonList(newAUIntLiteralExp((long) 0)));
+            updateStmts.add(newAAssignmentStm(value, assignmentExpression));
         });
         return updateStmts;
     }
 
     //This method should check if all output of the Fixed Point iteration have stabilized/converged
     private List<PStm> checkLoopConvergence(List<FmiSimulationEnvironment.Variable> outputPorts, LexIdentifier doesConverge) {
-        LexIdentifier index = newAIdentifier("index");
+        LexIdentifier index = newAIdentifier("i");
         List<PStm> result = new Vector<>();
         result.add(newALocalVariableStm(newAVariableDeclaration(index, newAIntNumericPrimitiveType(), newAExpInitializer(newAIntLiteralExp(0)))));
         outputPorts.forEach(o -> {
@@ -292,6 +297,9 @@ public class StatementGeneratorContainer {
 
             result.add(newWhile(newALessEqualBinaryExp(newAIdentifierExp(index), arraySize),
                     newABlockStm(convergenceLoop)));
+
+            //Reset index after loop;
+            result.add(newAAssignmentStm(newAIdentifierStateDesignator(index), newAIntLiteralExp(0)));
 
         });
 
@@ -675,7 +683,6 @@ public class StatementGeneratorContainer {
         result.addAll(Arrays.asList(
                 createGetSVsStatement(instanceName, "get" + type.name(), longs, valueArray, valRefs.getLeft(), newAIdentifier(statusVariable)),
                 statusCheck(newAIdentifierExp(newAIdentifier(statusVariable)), FMIWARNINGANDFATALERRORCODES, "get failed", true, true)));
-
 
         // Update instanceVariables
         result.addAll(updateInstanceVariables(instanceName, longs, (LexIdentifier) valueArray.clone(), type));
