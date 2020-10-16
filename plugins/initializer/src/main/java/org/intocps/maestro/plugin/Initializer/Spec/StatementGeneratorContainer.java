@@ -143,10 +143,10 @@ public class StatementGeneratorContainer {
                         (LexIdentifier) createLexIdentifier.apply("exitInitializationMode").clone(), null));
     }
 
-    public List<PStm> createFixedPointIteration(List<FmiSimulationEnvironment.Variable> loopVariables, int iterationMax, int sccNumber,
+    public List<PStm> createFixedPointIteration(List<FmiSimulationEnvironment.Variable> loopVariables, int iterationMax,
             FmiSimulationEnvironment env) throws ExpandException {
-        LexIdentifier end = newAIdentifier(String.format("end%d", sccNumber));
-        LexIdentifier start = newAIdentifier(String.format("start%d", sccNumber));
+        LexIdentifier end = newAIdentifier("max_iterations");
+        LexIdentifier start = newAIdentifier("iteration");
         List<PStm> statements = new Vector<>();
 
         statements

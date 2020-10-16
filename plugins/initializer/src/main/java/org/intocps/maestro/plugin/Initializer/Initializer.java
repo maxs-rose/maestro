@@ -187,7 +187,7 @@ public class Initializer implements IMaestroExpansionPlugin {
             int sccNumber) throws ExpandException {
         var optimizedOrder = optimizeInstantiationOrder(variables);
 
-        return sc.createFixedPointIteration(variables, this.config.maxIterations, sccNumber, env);
+        return sc.createFixedPointIteration(variables, this.config.maxIterations, env);
     }
 
     private List<ModelDescription.ScalarVariable> getScalarVariables(Set<Variable> variables) {
