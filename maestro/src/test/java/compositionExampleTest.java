@@ -16,7 +16,7 @@ public class compositionExampleTest {
 
         FixedStep jacStep = new FixedStep(0.5);
         jac.setStepAlgorithm(jacStep);
-        jac.setSimulationEntities(Arrays.asList(jac1, jac2, gs));
+        jac.setSimulationEntities(Arrays.asList(jac1, gs, jac2));
 
         VariableStep gsStep = new VariableStep(0.5, 0.1, 1.0);
         gs.setStepAlgorithm(gsStep);

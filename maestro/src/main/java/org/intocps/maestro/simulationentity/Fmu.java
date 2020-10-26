@@ -14,6 +14,6 @@ public class Fmu extends SimulationUnit {
 
     @Override
     public String print(int indentCount) {
-        return SimulationEntity.indent(indentCount) + "FMU";
+        return SimulationEntity.indent(indentCount) + "FMU-" + id;
     }
 }
