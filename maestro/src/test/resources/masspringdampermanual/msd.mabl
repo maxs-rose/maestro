@@ -1,0 +1,175 @@
+simulation
+{
+    real START_TIME = 0.0;
+    real END_TIME = 10.0;
+    real STEP_SIZE = 0.001;
+    real global_absolute_tolerance = 0.0;
+    real global_relative_tolerance = 0.01;
+
+    uInt[] msd1_x1_valRefs[1] = { 7 };
+    real[] msd1_x1_values[1];
+    real x1_v;
+
+    uInt[] msd1_v1_valRefs[1] = { 6 };
+    real[] msd1_v1_values[1];
+    real v1_v;
+
+    uInt[] msd1_fk_valRefs[1] = { 5 };
+    real[] msd1_fk_values[1];
+
+    uInt[] msd2_fk_valRefs[1] = {7};
+    real[] msd2_fk_values[1];
+    real F_v;
+
+    uInt[] msd2_x1_valRefs[1] = {8};
+    real[] msd2_x1_values[1];
+
+    uInt[] msd2_v1_valRefs[1] = {9};
+    real[] msd2_v1_values[1];
+
+    uInt[] msd2_x2_valRefs[1] = {11};
+    uInt[] msd2_x2_values[1];
+
+    uInt[] msd2_v2_valRefs[1] = {10};
+    uInt[] msd2_v2_values[1];
+
+    DataWriter dataWriter = load("DataWriter");
+    // Log msd1: x1,v1, msd2: x2,v2
+    string[] data_headers[4] = {"msd1.x1","msd1.v1","msd2.x2","msd2.v2"};
+    DataWriterConfig dataWriterConfiguration = dataWriter.writeHeader(data_headers);
+    string[] data_values[4];
+
+    Math math = load("Math");
+    Logger logger = load("Logger");
+
+    FMI2 msd1FMU = load("FMI2", "{da03fa66-a02a-43d6-a906-db865e2ea044}", "src/test/resources/MassSpringDamper1.fmu");
+    FMI2 msd2FMU = load("FMI2", "{9113a387-2c02-42ae-ae68-5073bf845034}",  "src/test/resources/MassSpringDamper2.fmu");
+    FMI2Component msd1 = msd1FMU.instantiate("msd1", false, false);
+    FMI2Component msd2 = msd2FMU.instantiate("msd2", false, false);
+
+    msd1.setupExperiment(false, 0.0, START_TIME, true, END_TIME);
+    msd2.setupExperiment(false, 0.0, START_TIME, true, END_TIME);
+
+    real[] msd1ParameterValues[5] = { 1.0, 1.0, 1.0, 1.0, 0.0 };
+    uInt[] mad1ParameterValRefs[5] = { 0 , 1, 2, 4, 3 };
+    msd1.setReal(mad1ParameterValRefs, 5, msd1ParameterValues);
+
+    real[] msd2ParameterValues[7] = { 1.0, 0.0,  1.0, 100.0, 2.0, 100.0, 1.0};
+    uInt[] mad2ParameterValRefs[7] = { 6, 5, 0, 2, 1, 3, 4 };
+    msd2.setReal(mad2ParameterValRefs, 7, msd2ParameterValues);
+
+    msd1.enterInitializationMode();
+    msd2.enterInitializationMode();
+
+    msd1.getReal(msd1_x1_valRefs, 1, msd1_x1_values);
+    x1_v = msd1_x1_values[0];
+
+    msd2_x1_values[0] = x1_v;
+    msd2.setReal(msd2_x1_valRefs, 1, msd2_x1_values);
+
+    msd1.getReal(msd1_v1_valRefs, 1, msd1_v1_values);
+    v1_v = msd1_v1_values[0];
+
+    msd2_v1_values[0] = v1_v;
+    msd2.setReal(msd2_v1_valRefs, 1, msd2_v1_values);
+
+    msd2.getReal(msd2_fk_valRefs, 1, msd2_fk_values);
+    F_v = msd2_fk_values[0];
+
+    msd1_fk_values[0] = F_v;
+    msd1.setReal(msd1_fk_values, 1, msd1_fk_values);
+
+    msd1.exitInitializationMode();
+    msd2.exitInitializationMode();
+
+    // Log msd1: x1,v1, msd2: x2,v2
+    data_values[0] = x1_v;
+    data_values[1] = v1_v;
+    msd2.getReal(msd2_x2_valRefs,1,msd2_x2_values);
+    data_values[2]=msd2_x2_values[0];
+    msd2.getReal(msd2_v2_valRefs,1,msd2_v2_values);
+    data_values[3]=msd2_v2_values[0];
+    dataWriter.writeDataPoint(dataWriterConfiguration, START_TIME, data_values);
+
+    real time = START_TIME;
+    bool converged = false;
+
+    real x1_a;
+    real v1_a;
+    real F_a;
+    FmiComponentState msd1_s;
+    FmiComponentState msd2_s;
+    while(time < END_TIME)
+    {
+        msd1.getState(msd1_s);
+        msd2.getState(msd2_s);
+        int convergenceIterator = 0;
+        converged = false;
+        while(!converged && (convergenceIterator < 5)) {
+            msd2_x1_values[0] = x1_v;
+            msd2.setReal(msd2_x1_valRefs, 1, msd2_x1_values);
+
+            msd2_v1_values[0] = v1_v;
+            msd2.setReal(msd2_v1_valRefs, 1, msd2_v1_values);
+
+            msd1_fk_values[0] = F_v;
+            msd1.setReal(msd1_fk_valRefs, 1, msd1_fk_values);
+
+            msd1.doStep(time, STEP_SIZE, true);
+            msd2.doStep(time, STEP_SIZE, true);
+
+            msd1.getReal(msd1_x1_valRefs, 1, msd1_x1_values);
+            x1_a = msd1_x1_values[0];
+
+            msd1.getReal(msd1_v1_valRefs, 1, msd1_v1_values);
+            v1_a = msd1_v1_values[0];
+
+            msd2.getReal(msd2_fk_valRefs, 1, msd2_fk_values);
+            real F_a = msd2_fk_values[0];
+
+            bool convergedx1 = math.isClose(x1_a, x1_v, global_absolute_tolerance, global_relative_tolerance);
+            bool convergedv1 = math.isClose(v1_a, v1_v, global_absolute_tolerance, global_relative_tolerance);
+            bool convergedf = math.isClose(F_a, F_v, global_absolute_tolerance, global_relative_tolerance);
+
+            converged = convergedx1 && convergedv1 && convergedf;
+
+            if(!converged)
+            {
+                msd1.setState(msd1_s);
+                msd2.setState(msd2_s);
+                logger.log(4, "No converge on iterator: %d", convergenceIterator);
+                logger.log(4, "Convergex1: %b", convergedx1);
+                logger.log(4, "convergedv1: %b", convergedv1);
+                logger.log(4, "convergedf: %b", convergedf);
+            }
+            else {
+                logger.log(4, "Converged on iterator: %d", convergenceIterator);
+            }
+
+            x1_v = x1_a;
+            v1_v = v1_a;
+            F_v = F_a;
+            convergenceIterator = convergenceIterator+1;
+        }
+        // Log msd1: x1,v1, msd2: x2,v2
+        data_values[0] = x1_v;
+        data_values[1] = v1_v;
+        msd2.getReal(msd2_x2_valRefs,1,msd2_x2_values);
+        data_values[2]=msd2_x2_values[0];
+        msd2.getReal(msd2_v2_valRefs,1,msd2_v2_values);
+        data_values[3]=msd2_v2_values[0];
+        dataWriter.writeDataPoint(dataWriterConfiguration, time, data_values);
+        time = time + STEP_SIZE;
+    }
+
+    dataWriter.close();
+    msd1.terminate();
+    msd2.terminate();
+    msd1FMU.freeInstance(msd1);
+    msd2FMU.freeInstance(msd2);
+
+    unload(msd1FMU);
+    unload(msd2FMU);
+    unload(dataWriter);
+    unload(math);
+}

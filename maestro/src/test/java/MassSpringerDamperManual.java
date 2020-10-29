@@ -16,15 +16,14 @@ import java.util.List;
 /**
  * This test class uses files within resources/documentation_example_files
  */
-public class DocumentationGettingStartedExamplesTest {
+public class MassSpringerDamperManual {
 
     @Test
-    public void initial() throws Exception
-    {
-        File testFilesDirectory = new File("src/test/resources/documentation_example_files");
-        List<File> sourceFiles = Arrays.asList(new File(testFilesDirectory, "example1.mabl"));
-        File specificationDirectory = new File("target", "DocumentationGettingStartedExamplesTest/initial/specification");
-        File workingDirectory = new File("target", "DocumentationGettingStartedExamplesTest/initial/working");
+    public void runExample() throws Exception {
+        File testFilesDirectory = new File("src/test/resources/masspringdampermanual");
+        List<File> sourceFiles = Arrays.asList(new File(testFilesDirectory, "msd.mabl"));
+        File specificationDirectory = new File("target", "masspringdampermanual/initial/specification");
+        File workingDirectory = new File("target", "masspringdampermanual/initial/working");
 
         FileUtils.deleteDirectory(workingDirectory);
 
@@ -37,7 +36,7 @@ public class DocumentationGettingStartedExamplesTest {
 
         mabl.parse(sourceFiles);
         if (reporter.getErrorCount() > 0) {
-            reporter.printErrors(new PrintWriter(System.err, true));
+            reporter.printErrors(new PrintWriter(System.out, true));
             assert (false);
         } else {
             new MableInterpreter(new DefaultExternalValueFactory(workingDirectory,
