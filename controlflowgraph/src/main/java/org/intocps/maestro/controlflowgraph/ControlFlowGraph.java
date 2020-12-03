@@ -22,7 +22,11 @@ public class ControlFlowGraph extends DepthFirstAnalysisAdaptorQuestion<CfgEnv> 
 
         for (int i = 0; i < node.getBody().size(); i++) {
             INode n = node.getBody().get(i);
-            // An if marks the end of a basic block.
+
+            // An if marks the end of a basic block with the test being the last node.
+            //TODO: Consider: Currently the caseAIfStm(...) is in charge of finalising the env.currentBasicBlock and adding it to
+            // basicBlocks. Perhaps this should be carried out on the parent, i.e. in this caseABlockStm? This way, a new CfgEnv could be parsed
+            // to the if. Would this make for a cleaner approach?
             if (n instanceof AIfStm) {
                 /** Create a join basic block for the progression after the if
                  *     [a]
