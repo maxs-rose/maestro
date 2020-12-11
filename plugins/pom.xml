@@ -24,5 +24,6 @@
         <module>verificationsuite</module>
         <module>initializer</module>
         <module>debuglogging</module>
+        <module>z3simulation</module>
     </modules>
 </project>
