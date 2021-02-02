@@ -217,9 +217,9 @@ class Synthesizer : IMaestroExpansionPlugin {
         }
     }
 
-    private fun createConvergencePorts(ports: List<PortRef>, fmuInstances: Map<String, ComponentVariableFmi2Api>): Map<ComponentVariableFmi2Api, MutableMap<PortFmi2Api, VariableFmi2Api<Any>>> {
+    private fun createConvergencePorts(ports: List<PortRef>, fmuInstances: Map<String, ComponentVariableFmi2Api>): Map<ComponentVariableFmi2Api, Map<PortFmi2Api, VariableFmi2Api<Any>>> {
         val fmuToPorts = ports.groupBy { i -> i.fmu() }.map { i -> i.key to i.value.map { p -> fmuInstances.getValue(i.key).getPort(p.port()) }  }.toMap()
-        return fmuToPorts.map { (fmu, ports) -> fmuInstances.getValue(fmu) to ports.map { port -> port to fmuInstances[fmu]?.get<Any>(port.name)!! } }.toMap()
+        return fmuToPorts.map { (fmu, ports) -> fmuInstances.getValue(fmu) to ports.map { port -> port to fmuInstances[fmu]?.getSingle(port.name)!!}.toMap()}.toMap()
     }
 
 
