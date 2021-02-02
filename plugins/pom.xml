@@ -23,6 +23,7 @@
         <module>topologicalsorting</module>
         <module>verificationsuite</module>
         <module>initializer</module>
+        <module>synthesizer</module>
         <module>debuglogging</module>
     </modules>
 </project>
