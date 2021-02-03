@@ -1,12 +1,11 @@
 package org.intocps.maestro.plugin.synthesizer
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ArrayNode
 import core.*
-import org.intocps.maestro.ast.AFunctionDeclaration
-import org.intocps.maestro.ast.AModuleDeclaration
-import org.intocps.maestro.ast.LexIdentifier
+import org.intocps.maestro.ast.*
 import org.intocps.maestro.ast.MableAstFactory.*
-import org.intocps.maestro.ast.ToParExp
 import org.intocps.maestro.ast.display.PrettyPrinter
 import org.intocps.maestro.ast.node.ABlockStm
 import org.intocps.maestro.ast.node.AImportedModuleCompilationUnit
@@ -32,6 +31,7 @@ import org.intocps.maestro.plugin.IMaestroExpansionPlugin
 import org.intocps.maestro.plugin.IPluginConfiguration
 import org.intocps.maestro.plugin.SimulationFramework
 import org.intocps.maestro.plugin.synthesizer.instructions.*
+import org.intocps.orchestration.coe.config.InvalidVariableStringException
 import org.slf4j.LoggerFactory
 import scala.jdk.javaapi.CollectionConverters
 import synthesizer.LoopStrategy
@@ -47,7 +47,9 @@ import java.util.stream.Stream
 class Synthesizer : IMaestroExpansionPlugin {
     val f1: AFunctionDeclaration = newAFunctionDeclaration(LexIdentifier("synthesizer", null),
             listOf(newAFormalParameter(newAArrayType(newANameType("FMI2Component")), newAIdentifier("component")),
-                    newAFormalParameter(newRealType(), newAIdentifier("startTime")), newAFormalParameter(newRealType(), newAIdentifier("endTime"))),
+                    newAFormalParameter(newARealNumericPrimitiveType(), newAIdentifier("stepSize")),
+                    newAFormalParameter(newARealNumericPrimitiveType(), newAIdentifier("startTime")),
+                    newAFormalParameter(newARealNumericPrimitiveType(), newAIdentifier("endTime"))),
             newAVoidType())
 
     var config: SynthesizerConfig? = null
@@ -263,11 +265,51 @@ class Synthesizer : IMaestroExpansionPlugin {
     }
 
     @Throws(IOException::class)
-    override fun parseConfig(`is`: InputStream): IPluginConfiguration {
-        return (ObjectMapper().readValue(`is`, SynthesizerConfig::class.java))
+    override fun parseConfig(`is`: InputStream?): IPluginConfiguration? {
+        var root = ObjectMapper().readTree(`is`)
+        //We are only interested in one configuration, so in case it is an array we take the first one.
+        if (root is ArrayNode) {
+            root = root[0]
+        }
+        val stabilisation = root["stabilisation"]
+        val fixedPointIteration = root["fixedPointIteration"]
+        val absoluteTolerance = root["absoluteTolerance"]
+        val relativeTolerance = root["relativeTolerance"]
+        var conf: SynthesizerConfig? = null
+        try {
+            conf = SynthesizerConfig(stabilisation, fixedPointIteration, absoluteTolerance, relativeTolerance)
+        } catch (e: InvalidVariableStringException) {
+            e.printStackTrace()
+        }
+        return conf
     }
 
-    class SynthesizerConfig(val endtime: Double, val maxIterations: Int, val absoluteTolerance: Double, val relativeTolerance: Double, val stabilisation: Boolean) : IPluginConfiguration {}
+
+    class SynthesizerConfig : IPluginConfiguration {
+        var stabilisation = false
+        var maxIterations = 0
+        var absoluteTolerance = 1.0
+        var relativeTolerance = 1.0
+
+        @Throws(InvalidVariableStringException::class)
+        constructor(stabilisation: JsonNode?, fixedPointIteration: JsonNode?, absoluteTolerance: JsonNode?,
+                    relativeTolerance: JsonNode?) {
+            this.stabilisation = stabilisation?.asBoolean(false) ?: false
+            maxIterations = fixedPointIteration?.asInt(5) ?: 5
+            if (absoluteTolerance == null) {
+                this.absoluteTolerance = 0.2
+            } else {
+                this.absoluteTolerance = absoluteTolerance.asDouble(0.2)
+            }
+            if (relativeTolerance == null) {
+                this.relativeTolerance = 0.1
+            } else {
+                this.relativeTolerance = relativeTolerance.asDouble(0.1)
+            }
+        }
+    }
+
+    //class SynthesizerConfig(val endtime: Double, val maxIterations: Int, val absoluteTolerance: Double, val relativeTolerance: Double, val stabilisation: Boolean) : IPluginConfiguration {}
 
     companion object {
         val logger = LoggerFactory.getLogger(Synthesizer::class.java)

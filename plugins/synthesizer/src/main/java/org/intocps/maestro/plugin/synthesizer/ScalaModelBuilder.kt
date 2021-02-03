@@ -35,8 +35,8 @@ class ScalaModelBuilder {
 
     fun createConnections(env: Fmi2SimulationEnvironment, fmuInstance: Map<String, ComponentVariableFmi2Api?>,
                           external: InternalOrExternal): List<ConnectionModel> {
-        return env.getRelations(*fmuInstance.keys.toTypedArray())
-                .filter { i -> i.direction == IRelation.Direction.OutputToInput && i.origin == external }
+        val relations = env.getRelations(*fmuInstance.keys.toTypedArray()).filter { i -> i.direction == IRelation.Direction.OutputToInput && i.origin == external }
+        return relations
                 .flatMap { i -> i.targets.values.map { o -> relationToConnectionModel(i.source, o) } }
     }
 

@@ -8,7 +8,6 @@ real END_TIME = 10.0;
 real STEP_SIZE = 0.1;
 
 
-DataWriter dataWriter = load("DataWriter");
 Logger logger = load("Logger");
 Math math = load("Math");
 FMI2 tankcontroller = load("FMI2", "{8c4e810f-3df3-4a00-8276-176fa3c9f000}", "src/test/resources/watertankcontroller-c.fmu");
@@ -24,13 +23,11 @@ bool global_execution_continue = true;
 @Config("@file: config.json");
 Synthesizer.expand synthesizer(components,STEP_SIZE,START_TIME,END_TIME);
 
-dataWriter.close();
 tankcontroller.freeInstance(crtlInstance);
 SingleWatertank.freeInstance(wtInstance);
 
 unload(tankcontroller);
 unload(SingleWatertank);
-unload(dataWriter);
 unload(logger);
 unload(math);
 
