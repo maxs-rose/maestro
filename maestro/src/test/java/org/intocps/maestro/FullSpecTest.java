@@ -189,6 +189,7 @@ public class FullSpecTest {
                 builder.setStepAlgorithm(new FixedStepSizeAlgorithm(simulationConfiguration.endTime, a.size)).setVisible(true).setLoggingOn(true);
             }
 
+
             MaBLTemplateConfiguration configuration = builder.build();
 
             mabl.generateSpec(configuration);

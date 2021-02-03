@@ -1,0 +1,7 @@
+{
+  "stabilisation": false,
+  "maxIterations": 5,
+  "absoluteTolerance": 0.1,
+  "relativeTolerance": 0.1
+}
+
