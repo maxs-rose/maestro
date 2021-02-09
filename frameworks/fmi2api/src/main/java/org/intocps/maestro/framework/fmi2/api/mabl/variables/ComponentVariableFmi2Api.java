@@ -51,6 +51,7 @@ public class ComponentVariableFmi2Api extends VariableFmi2Api<Fmi2Builder.NamedV
     private BooleanVariableFmi2Api currentTimeStepFullStepVar = null;
     private ArrayVariableFmi2Api<Object> valueRefBuffer;
     private List<String> variabesToLog;
+    private ArrayVariableFmi2Api<Object> categoriesBuffer;
 
     public ComponentVariableFmi2Api(PStm declaration, FmuVariableFmi2Api parent, String name, ModelDescriptionContext modelDescriptionContext,
             MablApiBuilder builder, IMablScope declaringScope, PStateDesignator designator, PExp referenceExp) {
@@ -141,9 +142,6 @@ public class ComponentVariableFmi2Api extends VariableFmi2Api<Fmi2Builder.NamedV
     }
 
     private ArrayVariableFmi2Api<Object> createBuffer(PType type, String prefix, int length) {
-
-        //lets find a good place to store the buffer.
-        String ioBufName = builder.getNameGenerator().getName(this.name, type + "", prefix);
         PInitializer initializer = null;
         if (length > 0) {
             //Bug in the interpreter it relies on values being there
@@ -160,18 +158,26 @@ public class ComponentVariableFmi2Api extends VariableFmi2Api<Fmi2Builder.NamedV
 
             }
         }
-        PStm var = newALocalVariableStm(newAVariableDeclaration(newAIdentifier(ioBufName), type, length, initializer));
+
+        return this.createBuffer(type, prefix, length, initializer);
+
+    }
+
+    private ArrayVariableFmi2Api<Object> createBuffer(PType type, String prefix, int length, PInitializer initializer) {
+        String bufferName = builder.getNameGenerator().getName(this.name, type + "", prefix);
+
+        PStm var = newALocalVariableStm(newAVariableDeclaration(newAIdentifier(bufferName), type, length, initializer));
 
         getDeclaredScope().addAfter(getDeclaringStm(), var);
 
         List<VariableFmi2Api<Object>> items = IntStream.range(0, length).mapToObj(
                 i -> new VariableFmi2Api<>(var, type, this.getDeclaredScope(), builder.getDynamicScope(),
-                        newAArayStateDesignator(newAIdentifierStateDesignator(newAIdentifier(ioBufName)), newAIntLiteralExp(i)),
-                        newAArrayIndexExp(newAIdentifierExp(ioBufName), Collections.singletonList(newAIntLiteralExp(i)))))
+                        newAArayStateDesignator(newAIdentifierStateDesignator(newAIdentifier(bufferName)), newAIntLiteralExp(i)),
+                        newAArrayIndexExp(newAIdentifierExp(bufferName), Collections.singletonList(newAIntLiteralExp(i)))))
                 .collect(Collectors.toList());
 
         return new ArrayVariableFmi2Api<>(var, type, getDeclaredScope(), builder.getDynamicScope(),
-                newAIdentifierStateDesignator(newAIdentifier(ioBufName)), newAIdentifierExp(ioBufName), items);
+                newAIdentifierStateDesignator(newAIdentifier(bufferName)), newAIdentifierExp(bufferName), items);
 
     }
 
@@ -804,6 +810,35 @@ public class ComponentVariableFmi2Api extends VariableFmi2Api<Fmi2Builder.NamedV
         return this.name;
     }
 
+    /**
+     * If the strings are empty, then just set logLevels
+     *
+     * @param strings
+     */
+    public void setDebugLogging(List<String> strings) {
+        Fmi2Builder.Scope<PStm> scope = builder.getDynamicScope();
+        PExp loggingOn = newABoolLiteralExp(true);
+        PExp categoriesSize;
+        if (strings == null || strings.size() == 0) {
+            this.categoriesBuffer = createBuffer(newAStringPrimitiveType(), this.name + "_logcategories", 0);
+            categoriesSize = newAUIntLiteralExp(0L);
+        } else {
+            this.categoriesBuffer = createBuffer(newAStringPrimitiveType(), this.name + "_logcategories", strings.size(),
+                    newAArrayInitializer(strings.stream().map(x -> newAStringLiteralExp(x)).collect(Collectors.toList())));
+            categoriesSize = newAUIntLiteralExp(Long.valueOf(strings.size()));
+        }
+        List<PExp> arguments = Arrays.asList(loggingOn, categoriesSize, this.categoriesBuffer.getReferenceExp());
+
+        AAssigmentStm stm = newAAssignmentStm(builder.getGlobalFmiStatus().getDesignator().clone(),
+                call(this.getReferenceExp().clone(), "setDebugLogging", arguments));
+        scope.add(stm);
+        if (builder.getSettings().fmiErrorHandlingEnabled) {
+            FmiStatusErrorHandlingBuilder.generate(builder, "setDebugLogging", this, (IMablScope) scope, MablApiBuilder.FmiStatus.FMI_ERROR,
+                    MablApiBuilder.FmiStatus.FMI_FATAL);
+        }
+
+    }
+
 
     public enum FmiFunctionType {
         GET,
@@ -899,6 +934,4 @@ public class ComponentVariableFmi2Api extends VariableFmi2Api<Fmi2Builder.NamedV
 
         }
     }
-
-
 }
